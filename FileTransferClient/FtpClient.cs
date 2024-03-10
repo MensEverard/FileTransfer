@@ -1,0 +1,153 @@
+﻿using Newtonsoft.Json;
+using System;
+using System.IO;
+using System.Net;
+using System.Runtime;
+
+namespace FileTransferClient
+{
+
+    class FTPSettings
+    {
+        public string Server { get; set; }
+        public string Username { get; set; }
+        public string Password { get; set; }
+        public string rootPath { get; set; }
+    }
+    class FtpClient : IFileTransferClient
+    {
+        private FTPSettings Settings;
+        public FtpClient()
+        {
+            if (File.Exists("FTPSettings.json"))
+            {
+                this.Settings = LoadSettingsFromJSON("FTPSettings.json");
+            }
+            else
+            {
+                this.Settings = new FTPSettings();
+                this.Settings.Server= "ftp.example.com";
+                this.Settings.Username= "username";
+                this.Settings.Password = "password";
+                this.Settings.rootPath = "/mag_obmen";
+                
+                SaveSettingsToJSON(this.Settings, "FTPSettings.json");
+
+                throw new FileNotFoundException("FTPSettings.json not found");
+            }
+        }
+
+        public void DownloadFiles(string remotePath, string localPath)
+        {
+            // Download files from the FTP server
+            using (WebClient client = new WebClient())
+            {
+                client.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
+                try
+                {
+                    client.DownloadFile($"ftp://{this.Settings.Server}{this.Settings.rootPath}/{remotePath}", localPath);
+                }
+                catch
+                {
+                    MyLogger.Log.Error($"File {this.Settings.rootPath}/{remotePath} not found");
+                    throw new Exception($"File {this.Settings.rootPath}/{remotePath} not found");
+                }
+            }
+        }
+
+        public void DeleteFile(string remotePath)
+        {
+            FtpWebRequest request = (FtpWebRequest)WebRequest.Create($"ftp://{this.Settings.Server}{this.Settings.rootPath}/{remotePath}");
+            request.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
+            request.Method = WebRequestMethods.Ftp.DeleteFile;
+            FtpWebResponse response = (FtpWebResponse)request.GetResponse();
+            response.Close();
+        }
+
+        public void UploadFiles(string localPath, string remotePath)
+        {
+            // Upload files to the FTP server
+            using (var client = new WebClient())
+            {
+                client.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
+                client.UploadFile($"ftp://{this.Settings.Server}{this.Settings.rootPath}/{remotePath}", WebRequestMethods.Ftp.UploadFile, localPath);
+            }
+        }
+
+        public bool CompareFiles(string remotePath, string localPath)
+        {
+            byte[] localFileBytes = File.ReadAllBytes(localPath);
+            byte[] ftpFileBytes = this.DownloadData(remotePath);
+
+            if (AreByteArraysEqual(localFileBytes, ftpFileBytes))
+            {
+                return true;
+            }
+            return false;
+        }
+
+        byte[] DownloadData(string remotePath)
+        {
+            using (WebClient client = new WebClient())
+            {
+                client.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
+                return client.DownloadData($"ftp://{this.Settings.Server}{this.Settings.rootPath}/{remotePath}");
+            }
+        }
+
+        FTPSettings LoadSettingsFromJSON(string jsonFilePath)
+        {
+            // Load FTP settings from a JSON file
+            using (StreamReader file = File.OpenText(jsonFilePath))
+            {
+                JsonSerializer serializer = new JsonSerializer();
+                return (FTPSettings)serializer.Deserialize(file, typeof(FTPSettings));
+            }
+        }
+
+        //create save settings to json
+        void SaveSettingsToJSON(FTPSettings ftpSettings, string jsonFilePath)
+        {
+            using (StreamWriter file = File.CreateText(jsonFilePath))
+            {
+                JsonSerializer serializer = new JsonSerializer();
+                serializer.Serialize(file, ftpSettings);
+            }
+        }
+
+        bool AreByteArraysEqual(byte[] array1, byte[] array2)
+        {
+            if (array1.Length != array2.Length)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < array1.Length; i++)
+            {
+                if (array1[i] != array2[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+    }
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
