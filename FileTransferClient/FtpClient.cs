@@ -26,11 +26,11 @@ namespace FileTransferClient
             else
             {
                 this.Settings = new FTPSettings();
-                this.Settings.Server= "ftp.example.com";
-                this.Settings.Username= "username";
+                this.Settings.Server = "ftp.example.com";
+                this.Settings.Username = "username";
                 this.Settings.Password = "password";
                 this.Settings.rootPath = "/mag_obmen";
-                
+
                 SaveSettingsToJSON(this.Settings, "FTPSettings.json");
 
                 throw new FileNotFoundException("FTPSettings.json not found");
@@ -45,19 +45,31 @@ namespace FileTransferClient
                 client.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
                 try
                 {
-                    client.DownloadFile($"ftp://{this.Settings.Server}{this.Settings.rootPath}/{remotePath}", localPath);
+                    client.DownloadFile($"ftp://{this.Settings.Server}{this.Settings.rootPath}{remotePath}", localPath);
                 }
-                catch
+                catch (WebException ex)
                 {
-                    MyLogger.Log.Error($"File {this.Settings.rootPath}/{remotePath} not found");
-                    throw new Exception($"File {this.Settings.rootPath}/{remotePath} not found");
+                   // MyLogger.Log.Error($"DownloadFile File {this.Settings.rootPath}{remotePath} not found");
+
+                    if (ex.Response != null)
+                    {
+                        var response = (FtpWebResponse)ex.Response;
+                        if (response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailable)
+                        {
+                            // do nothing
+                            return;
+                        }
+                    }
+                    MyLogger.Log.Error(ex.Message + " " + ex.InnerException.Message);
+                    throw; // Re-throw the exception if it's not related to file availability
                 }
             }
         }
 
+
         public void DeleteFile(string remotePath)
         {
-            FtpWebRequest request = (FtpWebRequest)WebRequest.Create($"ftp://{this.Settings.Server}{this.Settings.rootPath}/{remotePath}");
+            FtpWebRequest request = (FtpWebRequest)WebRequest.Create($"ftp://{this.Settings.Server}{this.Settings.rootPath}{remotePath}");
             request.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
             request.Method = WebRequestMethods.Ftp.DeleteFile;
             FtpWebResponse response = (FtpWebResponse)request.GetResponse();
@@ -67,10 +79,31 @@ namespace FileTransferClient
         public void UploadFiles(string localPath, string remotePath)
         {
             // Upload files to the FTP server
+            if (!File.Exists(localPath))
+            {
+                return;
+            }
+
             using (var client = new WebClient())
             {
                 client.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
-                client.UploadFile($"ftp://{this.Settings.Server}{this.Settings.rootPath}/{remotePath}", WebRequestMethods.Ftp.UploadFile, localPath);
+                try
+                {
+                    client.UploadFile($"ftp://{this.Settings.Server}{this.Settings.rootPath}{remotePath}", WebRequestMethods.Ftp.UploadFile, localPath);
+                }
+                catch (WebException ex)
+                {
+                    if (ex.Response != null)
+                    {
+                        var response = (FtpWebResponse)ex.Response;
+                        if (response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailable)
+                        {
+                            return;
+                        }
+                    }
+                    // Handle other WebException scenarios if needed
+                    throw; // Re-throw the exception if it's not related to file availability
+                }
             }
         }
 
@@ -91,7 +124,23 @@ namespace FileTransferClient
             using (WebClient client = new WebClient())
             {
                 client.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
-                return client.DownloadData($"ftp://{this.Settings.Server}{this.Settings.rootPath}/{remotePath}");
+                try
+                {
+                    return client.DownloadData($"ftp://{this.Settings.Server}{this.Settings.rootPath}/{remotePath}");
+                }
+                catch (WebException ex)
+                {
+                    if (ex.Response != null)
+                    {
+                        var response = (FtpWebResponse)ex.Response;
+                        if (response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailable)
+                        {
+                            return new byte[0];
+                        }
+                    }
+                    // Handle other WebException scenarios if needed
+                    throw; // Re-throw the exception if it's not related to file availability
+                }
             }
         }
 
