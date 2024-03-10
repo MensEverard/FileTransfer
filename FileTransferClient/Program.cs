@@ -12,15 +12,19 @@ namespace FileTransferClient
     {
         public string Name { get; set; }
         public int KkmCount { get; set; }
-        public bool Otovatka { get; set; }
+        public bool Otovarka { get; set; }
         public string Transport { get; set; }
+
+        
 
     }
 
     class ProgramSettings
     {
-        public string TransferSide { get; set; }
+        public string TransferSide { get; set; } //Mag|Server
         public string RootPath { get; set; }
+
+        public int ScanInterval { get; set; }
         public List<MagazineSettings> MagazineSettingsList { get; set; }
     }
 
@@ -29,6 +33,7 @@ namespace FileTransferClient
     {
         private NotifyIcon TrayIcon;
         private ContextMenuStrip TrayMenu;
+        private Timer timer = new Timer();
 
 
         public Program()
@@ -36,6 +41,7 @@ namespace FileTransferClient
             // Create a simple form without a visible window
             this.WindowState = FormWindowState.Minimized;
             this.ShowInTaskbar = false;
+
 
             // Initialize the system tray icon
             TrayIcon = new NotifyIcon();
@@ -108,6 +114,8 @@ namespace FileTransferClient
         private void CloseApp()
         {
             // Clean up resources and exit the application
+            timer.Stop();
+            timer.Dispose();
             TrayIcon.Visible = false;
             TrayIcon.Dispose();
             TrayMenu.Dispose();
@@ -123,29 +131,29 @@ namespace FileTransferClient
 
             //сдлать проверку наличие файла MagazineSettings.json
             //загрузить из него значения
-            if (File.Exists("MagazineSettings.json"))
+            if (File.Exists("ProgramSettings.json"))
             {
-                programSettings = LoadMagSettingsFromJSON("MagazineSettings.json");
+                programSettings = LoadMagSettingsFromJSON("ProgramSettings.json");
             }
             else
             {
                 MagazineSettingsList = new List<MagazineSettings>{
-                    new MagazineSettings { Name = "Asino", KkmCount = 1, Otovatka = true, Transport = "yd" }
-                    , new MagazineSettings {Name = "Bakchar", KkmCount = 2, Otovatka = true, Transport = "ftp" }
+                    new MagazineSettings { Name = "Asino", KkmCount = 1, Otovarka = true, Transport = "ftp" }
+                    , new MagazineSettings {Name = "Bakchar", KkmCount = 2, Otovarka = false, Transport = "ftp" }
                 };
 
                 programSettings = new ProgramSettings();
                 programSettings.MagazineSettingsList = MagazineSettingsList;
                 programSettings.RootPath = "D:\\VSProjects\\mag_obmen\\server_folders";
                 programSettings.TransferSide = "Server";
-                SaveMagSettingsToJSON(programSettings, "MagazineSettings.json");
+                SaveMagSettingsToJSON(programSettings, "ProgramSettings.json");
 
-                throw new FileNotFoundException("MagazineSettings.json not found");
+                throw new FileNotFoundException("ProgramSettings.json not found");
             }
 
             //create timer for run StartTransfer
-            Timer timer = new Timer();
-            timer.Interval = 10000; // 10 seconds
+            
+            timer.Interval = programSettings.ScanInterval * 1000; // 10 seconds
             timer.Tick += (sender, e) => StartTransfer(programSettings);
 
             // Start the timer
@@ -199,23 +207,26 @@ namespace FileTransferClient
             //import.txt        FTPin       -> magIn       move
             //in.flg            FTPin       -> magIn       move
             //SaveResult.txt    FTPOut      -> magOut      move
-            //import.txt        FTPOtovatka -> MagOtovarka move
-            //in.flg            FTPOtovatka -> MagOtovarka move
-            for (int i = 0; i < magazineSettings.KkmCount; i++)
+            //import.txt        FTPOtovarka -> MagOtovarka move
+            //in.flg            FTPOtovarka -> MagOtovarka move
+            for (int i = 1; i <= magazineSettings.KkmCount; i++)
             {
-                string localOutPath = programSettings.RootPath + "\\" + magazineSettings.Name + "\\Out" + ((i != 0) ? (i.ToString()) : "");
-                string remoteOutPath = "/" + magazineSettings.Name + "/Out" + ((i != 0) ? (i.ToString()) : "");
+                string localOutPath = programSettings.RootPath + "\\" + magazineSettings.Name + "\\Out" + ((i != 1) ? (i.ToString()) : "");
+                string remoteOutPath = "/" + magazineSettings.Name + "/Out" + ((i != 1) ? (i.ToString()) : "");
 
                 //Upload files
                 TransferClient.UploadFiles(localOutPath + "\\LoadResult.txt", remoteOutPath + "/LoadResult.txt");
                 TransferClient.UploadFiles(localOutPath + "\\еxport.txt", remoteOutPath + "/еxport.txt");
-                File.Delete(localOutPath + "\\LoadResult.txt");
-                File.Delete(localOutPath + "\\еxport.txt");
+                if (File.Exists(localOutPath + "\\LoadResult.txt"))
+                    File.Delete(localOutPath + "\\LoadResult.txt");
+
+                if (File.Exists(localOutPath + "\\еxport.txt"))
+                    File.Delete(localOutPath + "\\еxport.txt");
 
 
                 //Download files
-                string localInPath = programSettings.RootPath + "\\" + magazineSettings.Name + "\\In" + ((i != 0) ? (i.ToString()) : "");
-                string remoteInPath = "/" + magazineSettings.Name + "/In" + ((i != 0) ? (i.ToString()) : "");
+                string localInPath = programSettings.RootPath + "\\" + magazineSettings.Name + "\\In" + ((i != 1) ? (i.ToString()) : "");
+                string remoteInPath = "/" + magazineSettings.Name + "/In" + ((i != 1) ? (i.ToString()) : "");
 
                 if (File.Exists(localInPath + "\\in.flg") && File.Exists(localInPath + "\\import.txt"))
                 {
@@ -229,16 +240,16 @@ namespace FileTransferClient
                 TransferClient.DownloadFiles(remoteOutPath + "/SaveResult.txt", localOutPath + "\\SaveResult.txt");
             }
 
-            if (magazineSettings.Otovatka)
+            if (magazineSettings.Otovarka)
             {
-                string localOtovatkaPath = programSettings.RootPath + "\\" + magazineSettings.Name + "\\Otovatka";
-                string remoteOtovatkaPath = "/" + magazineSettings.Name + "/Otovatka";
+                string localOtovarkaPath = programSettings.RootPath + "\\" + magazineSettings.Name + "\\Otovarka";
+                string remoteOtovarkaPath = "/" + magazineSettings.Name + "/Otovarka";
 
-                TransferClient.DownloadFiles(remoteOtovatkaPath + "/import.txt", localOtovatkaPath + "\\import.txt");
-                TransferClient.DownloadFiles(remoteOtovatkaPath + "/in.flg", localOtovatkaPath + "\\in.flg");
+                TransferClient.DownloadFiles(remoteOtovarkaPath + "/import.txt", localOtovarkaPath + "\\import.txt");
+                TransferClient.DownloadFiles(remoteOtovarkaPath + "/in.flg", localOtovarkaPath + "\\in.flg");
                 //Remove file
-                TransferClient.DeleteFile(remoteOtovatkaPath + "/import.txt");
-                TransferClient.DeleteFile(remoteOtovatkaPath + "/in.txt");
+                TransferClient.DeleteFile(remoteOtovarkaPath + "/import.txt");
+                TransferClient.DeleteFile(remoteOtovarkaPath + "/in.txt");
             }
         }
 
@@ -250,18 +261,18 @@ namespace FileTransferClient
             //import.txt        In ->       FTPin       move if in.flg
             //in.flg            In ->       FTPin       move
             //SaveResult.txt    Out ->      FTPOut      Copy ? if diff date
-            //import.txt        Otovarka -> FTPOtovatka move if in.flg
-            //in.flg            Otovarka -> FTPOtovatka move
+            //import.txt        Otovarka -> FTPOtovarka move if in.flg
+            //in.flg            Otovarka -> FTPOtovarka move
 
             //serverDounload
             //еxport.txt FTPOut -Out move
             //LoadResult.txt FTPOut -Out move
 
-            for (int i = 0; i < magazineSettings.KkmCount; i++)
+            for (int i = 1; i <= magazineSettings.KkmCount; i++)
             {
                 //Upload files
-                string localInPath = programSettings.RootPath + "\\" + magazineSettings.Name + "\\In" + ((i != 0) ? (i.ToString()) : "");
-                string remoteInPath = "/" + magazineSettings.Name + "/In" + ((i != 0) ? (i.ToString()) : "");
+                string localInPath = programSettings.RootPath + "\\" + magazineSettings.Name + "\\In" + ((i != 1) ? (i.ToString()) : "");
+                string remoteInPath = "/" + magazineSettings.Name + "/In" + ((i != 1) ? (i.ToString()) : "");
                 if (File.Exists(localInPath + "\\in.flg") && File.Exists(localInPath + "\\import.txt"))
                 {
                     TransferClient.UploadFiles(localInPath + "\\import.txt", remoteInPath + "/import.txt");
@@ -270,14 +281,14 @@ namespace FileTransferClient
                     File.Delete(localInPath + "\\in.flg");
                     File.Delete(localInPath + "\\import.txt");
                 }
-                string localOutPath = programSettings.RootPath + "\\" + magazineSettings.Name + "\\Out" + ((i != 0) ? (i.ToString()) : "");
-                string remoteOutPath = "/" + magazineSettings.Name + "/Out" + ((i != 0) ? (i.ToString()) : "");
+                string localOutPath = programSettings.RootPath + "\\" + magazineSettings.Name + "\\Out" + ((i != 1) ? (i.ToString()) : "");
+                string remoteOutPath = "/" + magazineSettings.Name + "/Out" + ((i != 1) ? (i.ToString()) : "");
 
                 if (File.Exists(localOutPath + "\\SaveResult.txt"))
                 {
                     if (!TransferClient.CompareFiles(remoteOutPath + "/SaveResult.txt", localOutPath + "\\SaveResult.txt"))
                     {
-                        TransferClient.UploadFiles(localOutPath + "\\SaveResult.txt", remoteOutPath + "/SaveResult.txt"); continue;
+                        TransferClient.UploadFiles(localOutPath + "\\SaveResult.txt", remoteOutPath + "/SaveResult.txt"); 
                     }
 
                 }
@@ -289,18 +300,18 @@ namespace FileTransferClient
                 TransferClient.DeleteFile(remoteOutPath + "/еxport.txt");
             }
 
-            if (magazineSettings.Otovatka)
+            if (magazineSettings.Otovarka)
             {
-                string localOtovatkaPath = programSettings.RootPath + "\\" + magazineSettings.Name + "\\Otovatka";
-                string remoteOtovatkaPath = "/" + magazineSettings.Name + "/Otovatka";
+                string localOtovarkaPath = programSettings.RootPath + "\\" + magazineSettings.Name + "\\Otovarka";
+                string remoteOtovarkaPath = "/" + magazineSettings.Name + "/Otovarka";
 
-                if (File.Exists(localOtovatkaPath + "\\in.flg") && File.Exists(localOtovatkaPath + "\\import.txt"))
+                if (File.Exists(localOtovarkaPath + "\\in.flg") && File.Exists(localOtovarkaPath + "\\import.txt"))
                 {
-                    TransferClient.UploadFiles(localOtovatkaPath + "\\import.txt", remoteOtovatkaPath + "/import.txt");
-                    TransferClient.UploadFiles(localOtovatkaPath + "\\in.flg", remoteOtovatkaPath + "/in.flg");
+                    TransferClient.UploadFiles(localOtovarkaPath + "\\import.txt", remoteOtovarkaPath + "/import.txt");
+                    TransferClient.UploadFiles(localOtovarkaPath + "\\in.flg", remoteOtovarkaPath + "/in.flg");
                     //Remove file
-                    File.Delete(localOtovatkaPath + "\\in.flg");
-                    File.Delete(localOtovatkaPath + "\\import.txt");
+                    File.Delete(localOtovarkaPath + "\\in.flg");
+                    File.Delete(localOtovarkaPath + "\\import.txt");
                 }
             }
         }
