@@ -38,34 +38,44 @@ namespace FileTransferClient
 
         public Program()
         {
-            // Create a simple form without a visible window
-            this.WindowState = FormWindowState.Minimized;
-            this.ShowInTaskbar = false;
+            try
+            {
+                // Create a simple form without a visible window
+                this.WindowState = FormWindowState.Minimized;
+                this.ShowInTaskbar = false;
 
 
-            // Initialize the system tray icon
-            TrayIcon = new NotifyIcon();
-            TrayIcon.Text = "System Tray App";
+                // Initialize the system tray icon
+                TrayIcon = new NotifyIcon();
+                TrayIcon.Text = "System Tray App";
 
-            // Load an icon resource for the tray
-            TrayIcon.Icon = TrayIcon.Icon = SystemIcons.Asterisk; // new System.Drawing.Icon("icon.ico");
+                // Load an icon resource for the tray
+                TrayIcon.Icon = TrayIcon.Icon = SystemIcons.Asterisk; // new System.Drawing.Icon("icon.ico");
 
-            TrayMenu = new ContextMenuStrip();
+                TrayMenu = new ContextMenuStrip();
 
-            // Create a context menu with an "Exit" command
-            ToolStripMenuItem exitMenuItem = new ToolStripMenuItem("Exit");
-            exitMenuItem.Click += ExitMenuItem_Click;
-            TrayMenu.Items.Add(exitMenuItem);
+                // Create a context menu with an "Exit" command
+                ToolStripMenuItem exitMenuItem = new ToolStripMenuItem("Exit");
+                exitMenuItem.Click += ExitMenuItem_Click;
+                TrayMenu.Items.Add(exitMenuItem);
 
-            // Assign the context menu to the tray icon
-            TrayIcon.ContextMenuStrip = TrayMenu;
+                // Assign the context menu to the tray icon
+                TrayIcon.ContextMenuStrip = TrayMenu;
 
-            // Add a handler for the mouse click event
-            TrayIcon.MouseClick += TrayIcon_MouseClick;
+                // Add a handler for the mouse click event
+                TrayIcon.MouseClick += TrayIcon_MouseClick;
 
-            TrayIcon.Visible = true;
+                TrayIcon.Visible = true;
 
-            OnStart();
+                OnStart();
+            } catch  (Exception ex)
+            { 
+                MyLogger.Log.Error("Не удалось запустить программу. Попробуйте повторить попытку позже.");
+                MyLogger.Log.Error(ex.Message + " " + ex.InnerException.Message);
+                MyLogger.Log.Error(ex.StackTrace);
+
+                throw;
+            }
         }
 
         static ProgramSettings LoadMagSettingsFromJSON(string jsonFilePath)
