@@ -3,7 +3,9 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 
 namespace FileTransferClient
 {
@@ -15,7 +17,7 @@ namespace FileTransferClient
         public bool Otovarka { get; set; }
         public string Transport { get; set; }
 
-        
+
 
     }
 
@@ -38,43 +40,55 @@ namespace FileTransferClient
 
         public Program()
         {
-            try
+            // Create a simple form without a visible window
+            this.WindowState = FormWindowState.Minimized;
+            this.ShowInTaskbar = false;
+
+
+            // Initialize the system tray icon
+            TrayIcon = new NotifyIcon();
+            TrayIcon.Text = "File Transfer Client";
+
+            // Load an icon resource for the tray
+            TrayIcon.Icon = TrayIcon.Icon = SystemIcons.Asterisk; // new System.Drawing.Icon("icon.ico");
+
+            TrayMenu = new ContextMenuStrip();
+
+            // Create a context menu with an "Exit" command
+            ToolStripMenuItem exitMenuItem = new ToolStripMenuItem("Exit");
+            exitMenuItem.Click += ExitMenuItem_Click;
+            TrayMenu.Items.Add(exitMenuItem);
+
+            // Assign the context menu to the tray icon
+            TrayIcon.ContextMenuStrip = TrayMenu;
+
+            // Add a handler for the mouse click event
+            TrayIcon.MouseClick += TrayIcon_MouseClick;
+
+            TrayIcon.Visible = true;
+
+            OnStart();
+
+        }
+
+        static void UnhandledExceptionHandler(object sender, UnhandledExceptionEventArgs e)
+        {
+            Exception ex = e.ExceptionObject as Exception;
+            if (ex != null)
             {
-                // Create a simple form without a visible window
-                this.WindowState = FormWindowState.Minimized;
-                this.ShowInTaskbar = false;
+                MyLogger.Log.Error("An unhandled exception occurred:");
+                MyLogger.Log.Error("Exception Message: " + ex.Message);
+                MyLogger.Log.Error("Exception Stack Trace: " + ex.StackTrace);
 
-
-                // Initialize the system tray icon
-                TrayIcon = new NotifyIcon();
-                TrayIcon.Text = "System Tray App";
-
-                // Load an icon resource for the tray
-                TrayIcon.Icon = TrayIcon.Icon = SystemIcons.Asterisk; // new System.Drawing.Icon("icon.ico");
-
-                TrayMenu = new ContextMenuStrip();
-
-                // Create a context menu with an "Exit" command
-                ToolStripMenuItem exitMenuItem = new ToolStripMenuItem("Exit");
-                exitMenuItem.Click += ExitMenuItem_Click;
-                TrayMenu.Items.Add(exitMenuItem);
-
-                // Assign the context menu to the tray icon
-                TrayIcon.ContextMenuStrip = TrayMenu;
-
-                // Add a handler for the mouse click event
-                TrayIcon.MouseClick += TrayIcon_MouseClick;
-
-                TrayIcon.Visible = true;
-
-                OnStart();
-            } catch  (Exception ex)
-            { 
-                MyLogger.Log.Error("Не удалось запустить программу. Попробуйте повторить попытку позже.");
-                MyLogger.Log.Error(ex.Message + " " + ex.InnerException.Message);
-                MyLogger.Log.Error(ex.StackTrace);
-
-                throw;
+                // Log variable values
+                if (ex.Data.Count > 0)
+                {
+                    MyLogger.Log.Error("Variable values:");
+                    foreach (var key in ex.Data.Keys)
+                    {
+                        MyLogger.Log.Error($"{key}: {ex.Data[key]}");
+                    }
+                }
             }
         }
 
@@ -116,6 +130,9 @@ namespace FileTransferClient
         [STAThread]
         public static void Main(string[] args)
         {
+            // Register an unhandled exception handler
+            AppDomain.CurrentDomain.UnhandledException += UnhandledExceptionHandler;
+
             // Start the application and run the form
             Application.Run(new Program());
         }
@@ -161,8 +178,10 @@ namespace FileTransferClient
                 throw new FileNotFoundException("ProgramSettings.json not found");
             }
 
+            TrayIcon.Text = TrayIcon.Text + " " + programSettings.TransferSide;
+
             //create timer for run StartTransfer
-            
+
             timer.Interval = programSettings.ScanInterval * 1000; // 10 seconds
             timer.Tick += (sender, e) => StartTransfer(programSettings);
 
@@ -172,7 +191,7 @@ namespace FileTransferClient
         }
 
 
-        private static void StartTransfer( ProgramSettings programSettings)
+        private static void StartTransfer(ProgramSettings programSettings)
         {
             MyLogger.Log.Info("StartTransfer()");
 
@@ -209,57 +228,94 @@ namespace FileTransferClient
         {
             //magazine mode
 
-            //magUpload
-            //еxport.txt        magOut     -> FTPOut    move
-            //LoadResult.txt    magOut     -> FTPOut    copy ? if diff date
-
-            //magDounload
-            //import.txt        FTPin       -> magIn       move
-            //in.flg            FTPin       -> magIn       move
-            //SaveResult.txt    FTPOut      -> magOut      move
-            //import.txt        FTPOtovarka -> MagOtovarka move
-            //in.flg            FTPOtovarka -> MagOtovarka move
             for (int i = 1; i <= magazineSettings.KkmCount; i++)
             {
-                string localOutPath = programSettings.RootPath + "\\" + magazineSettings.Name + "\\Out" + ((i != 1) ? (i.ToString()) : "");
-                string remoteOutPath = "/" + magazineSettings.Name + "/Out" + ((i != 1) ? (i.ToString()) : "");
+                string localOutPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, "Out" + ((i != 1) ? (i.ToString()) : ""));
+                string remoteOutPath = Path.Combine("/", magazineSettings.Name, "Out" + ((i != 1) ? (i.ToString()) : "")).Replace("\\", "/");
+                string localInPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, "In" + ((i != 1) ? (i.ToString()) : ""));
+                string remoteInPath = Path.Combine("/", magazineSettings.Name, "In" + ((i != 1) ? (i.ToString()) : "")).Replace("\\", "/");
 
-                //Upload files
-                TransferClient.UploadFiles(localOutPath + "\\LoadResult.txt", remoteOutPath + "/LoadResult.txt");
-                TransferClient.UploadFiles(localOutPath + "\\еxport.txt", remoteOutPath + "/еxport.txt");
-                if (File.Exists(localOutPath + "\\LoadResult.txt"))
-                    File.Delete(localOutPath + "\\LoadResult.txt");
-
-                if (File.Exists(localOutPath + "\\еxport.txt"))
-                    File.Delete(localOutPath + "\\еxport.txt");
-
-
-                //Download files
-                string localInPath = programSettings.RootPath + "\\" + magazineSettings.Name + "\\In" + ((i != 1) ? (i.ToString()) : "");
-                string remoteInPath = "/" + magazineSettings.Name + "/In" + ((i != 1) ? (i.ToString()) : "");
-
-                if (File.Exists(localInPath + "\\in.flg") && File.Exists(localInPath + "\\import.txt"))
+                if (!File.Exists(localInPath + "\\in.flg") && File.Exists(localInPath + "\\import.txt"))
                 {
-                    TransferClient.DownloadFiles(remoteInPath + "/import.txt", localInPath + "\\import.txt");
-                    TransferClient.DownloadFiles(remoteInPath + "/in.flg", localInPath + "\\in.flg");
-                    //Remove file
-                    TransferClient.DeleteFile(remoteInPath + "/import.txt");
-                    TransferClient.DeleteFile(remoteInPath + "/in.txt");
+                    string secondLine = File.ReadLines(localInPath + "\\import.txt").ElementAtOrDefault(1);
+                    if (secondLine != null && secondLine.Contains("@"))
+                        UploadImportAFile(localInPath, remoteInPath);
                 }
 
-                TransferClient.DownloadFiles(remoteOutPath + "/SaveResult.txt", localOutPath + "\\SaveResult.txt");
+                string LoadResultName = "LoadResult001.txt";
+                string SaveResultName = "SaveResult001.txt";
+
+                if (File.Exists(localOutPath + $"\\{LoadResultName}"))
+                    if (!TransferClient.CompareFiles(remoteOutPath + $"/{LoadResultName}", localOutPath + $"\\{LoadResultName}"))
+                        TransferClient.UploadFiles(localOutPath + $"\\{LoadResultName}", remoteOutPath + $"/{LoadResultName}");
+
+                if (File.Exists(localOutPath + $"\\{SaveResultName}"))
+                    if (!TransferClient.CompareFiles(remoteOutPath + $"/{SaveResultName}", localOutPath + $"\\{SaveResultName}"))
+                        TransferClient.UploadFiles(localOutPath + $"\\{SaveResultName}", remoteOutPath + $"/{SaveResultName}");
+
+                UploadExportFile(localOutPath, remoteOutPath);
+
+                DownloadImportFile(remoteInPath, localInPath);
+
             }
 
             if (magazineSettings.Otovarka)
             {
-                string localOtovarkaPath = programSettings.RootPath + "\\" + magazineSettings.Name + "\\Otovarka";
-                string remoteOtovarkaPath = "/" + magazineSettings.Name + "/Otovarka";
+                string localOtovarkaPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, "Otovarka");
+                string remoteOtovarkaPath = Path.Combine("/", magazineSettings.Name, "Otovarka").Replace("\\", "/");
+                DownloadImportFile(remoteOtovarkaPath, localOtovarkaPath);
+            }
 
-                TransferClient.DownloadFiles(remoteOtovarkaPath + "/import.txt", localOtovarkaPath + "\\import.txt");
-                TransferClient.DownloadFiles(remoteOtovarkaPath + "/in.flg", localOtovarkaPath + "\\in.flg");
-                //Remove file
-                TransferClient.DeleteFile(remoteOtovarkaPath + "/import.txt");
-                TransferClient.DeleteFile(remoteOtovarkaPath + "/in.txt");
+            void DownloadImportFile(string remotePath = null, string localPath = null)
+            {
+                string LocalInFile = Path.Combine(localPath, "in.flg");
+                string LocalImportFile = Path.Combine(localPath, "import.txt");
+                string LocalImportTempFile = Path.Combine(localPath, "import.tmp");
+
+                string RemoteInFile = Path.Combine(remotePath, "in.flg").Replace("\\", "/");
+                string RemoteImportFile = Path.Combine(remotePath, "import.txt").Replace("\\", "/");
+
+                if (!File.Exists(LocalImportFile))
+                {
+                    if (TransferClient.ExistsFile(RemoteImportFile) && TransferClient.ExistsFile(RemoteInFile))
+                    {
+                        TransferClient.DownloadFiles(RemoteImportFile, LocalImportTempFile);
+                        if (File.Exists(LocalImportTempFile))
+                            File.Move(LocalImportTempFile, LocalImportFile);
+                        TransferClient.DownloadFiles(RemoteInFile, LocalInFile);
+
+                        TransferClient.DeleteFile(RemoteImportFile);
+                        TransferClient.DeleteFile(RemoteInFile);
+                    }
+                }
+            }
+
+            void UploadExportFile(string localPath = null, string remotePath = null)
+            {
+                string LocalExportFile = Path.Combine(localPath, "export.txt");
+                string RemoteExportFile = Path.Combine(remotePath, "export.txt").Replace("\\", "/");
+                string RemoteExportTempFile = Path.Combine(remotePath, "export.tmp").Replace("\\", "/");
+
+                if (File.Exists(LocalExportFile))
+                {
+                    TransferClient.UploadFiles(LocalExportFile, RemoteExportTempFile);
+                    TransferClient.RenameFile(RemoteExportTempFile, RemoteExportFile);
+                    File.Delete(LocalExportFile);
+                }
+            }
+
+            void UploadImportAFile(string localPath = null, string remotePath = null)
+            {
+                string LocalImportFile = Path.Combine(localPath, "import.txt");
+
+                string RemoteImportFile = Path.Combine(remotePath, "import@.txt").Replace("\\", "/");
+                string RemoteImportTempFile = Path.Combine(remotePath, "import@.tmp").Replace("\\", "/");
+
+                TransferClient.UploadFiles(LocalImportFile, RemoteImportTempFile);
+                TransferClient.RenameFile(RemoteImportTempFile, RemoteImportFile);
+
+                File.Delete(LocalImportFile);
+
             }
         }
 
@@ -267,63 +323,83 @@ namespace FileTransferClient
         {
             // server mode
 
-            //serverUpload
-            //import.txt        In ->       FTPin       move if in.flg
-            //in.flg            In ->       FTPin       move
-            //SaveResult.txt    Out ->      FTPOut      Copy ? if diff date
-            //import.txt        Otovarka -> FTPOtovarka move if in.flg
-            //in.flg            Otovarka -> FTPOtovarka move
-
-            //serverDounload
-            //еxport.txt FTPOut -Out move
-            //LoadResult.txt FTPOut -Out move
-
             for (int i = 1; i <= magazineSettings.KkmCount; i++)
             {
                 //Upload files
-                string localInPath = programSettings.RootPath + "\\" + magazineSettings.Name + "\\In" + ((i != 1) ? (i.ToString()) : "");
-                string remoteInPath = "/" + magazineSettings.Name + "/In" + ((i != 1) ? (i.ToString()) : "");
-                if (File.Exists(localInPath + "\\in.flg") && File.Exists(localInPath + "\\import.txt"))
-                {
-                    TransferClient.UploadFiles(localInPath + "\\import.txt", remoteInPath + "/import.txt");
-                    TransferClient.UploadFiles(localInPath + "\\in.flg", remoteInPath + "/in.flg");
-                    //Remove file
-                    File.Delete(localInPath + "\\in.flg");
-                    File.Delete(localInPath + "\\import.txt");
-                }
-                string localOutPath = programSettings.RootPath + "\\" + magazineSettings.Name + "\\Out" + ((i != 1) ? (i.ToString()) : "");
-                string remoteOutPath = "/" + magazineSettings.Name + "/Out" + ((i != 1) ? (i.ToString()) : "");
+                string localInPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, "In" + ((i != 1) ? (i.ToString()) : ""));
+                string remoteInPath = Path.Combine("/", magazineSettings.Name, "In" + ((i != 1) ? (i.ToString()) : "")).Replace("\\", "/");
+                UploadImportFile(localInPath, remoteInPath);
 
-                if (File.Exists(localOutPath + "\\SaveResult.txt"))
-                {
-                    if (!TransferClient.CompareFiles(remoteOutPath + "/SaveResult.txt", localOutPath + "\\SaveResult.txt"))
-                    {
-                        TransferClient.UploadFiles(localOutPath + "\\SaveResult.txt", remoteOutPath + "/SaveResult.txt"); 
-                    }
+                string localOutPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, "Out" + ((i != 1) ? (i.ToString()) : ""));
+                string remoteOutPath = Path.Combine("/", magazineSettings.Name, "Out" + ((i != 1) ? (i.ToString()) : "")).Replace("\\", "/");
 
+                string LoadResultName = "LoadResult001.txt";
+                string SaveResultName = "SaveResult001.txt";
+
+                if (!File.Exists(localOutPath + $"\\{LoadResultName}") ||  !TransferClient.CompareFiles(remoteOutPath + $"/{LoadResultName}", localOutPath + $"\\{LoadResultName}"))
+                    TransferClient.DownloadFiles(remoteOutPath + $"/{LoadResultName}", localOutPath + $"\\{LoadResultName}");
+
+                if (!File.Exists(localOutPath + $"\\{SaveResultName}") || !TransferClient.CompareFiles(remoteOutPath + $"/{SaveResultName}", localOutPath + $"\\{SaveResultName}"))
+                    TransferClient.DownloadFiles(remoteOutPath + $"/{SaveResultName}", localOutPath + $"\\{SaveResultName}");
+
+                string exportName = "export.txt";
+                string exportTempName = "export.tmp";
+
+                TransferClient.DownloadFiles(remoteOutPath + $"/{exportName}", localOutPath + $"\\{exportTempName}");
+
+                if (File.Exists(localOutPath + $"\\{exportTempName}"))
+                {
+                    if (File.Exists(localOutPath + $"\\{exportName}"))
+                        File.Delete(localOutPath + $"\\{exportName}");
+                    File.Move(localOutPath + $"\\{exportTempName}", localOutPath + $"\\{exportName}");
+                    TransferClient.DeleteFile(remoteOutPath + $"/{exportName}");
                 }
-                //Download files
-                TransferClient.DownloadFiles(remoteOutPath + "/LoadResult.txt", localOutPath + "\\LoadResult.txt");
-                TransferClient.DownloadFiles(remoteOutPath + "/еxport.txt", localOutPath + "\\еxport.txt");
-                //remove from ftp
-                TransferClient.DeleteFile(remoteOutPath + "/LoadResult.txt");
-                TransferClient.DeleteFile(remoteOutPath + "/еxport.txt");
+
+                string importAName = "import@.txt";
+                string importATempName = "import@.tmp";
+
+                TransferClient.DownloadFiles(remoteInPath + $"/{importAName}", localInPath + $"\\{importATempName}");
+
+                if (File.Exists(localInPath + $"\\{importATempName}"))
+                {
+                    if (File.Exists(localInPath + $"\\{importAName}"))
+                        File.Delete(localInPath + $"\\{importAName}");
+                    File.Move(localInPath + $"\\{importATempName}", localInPath + $"\\{importAName}");
+                    TransferClient.DeleteFile(remoteInPath + $"/{importAName}");
+                }
             }
 
             if (magazineSettings.Otovarka)
             {
-                string localOtovarkaPath = programSettings.RootPath + "\\" + magazineSettings.Name + "\\Otovarka";
-                string remoteOtovarkaPath = "/" + magazineSettings.Name + "/Otovarka";
+                string localOtovarkaPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, "Otovarka");
+                string remoteOtovarkaPath = Path.Combine("/", magazineSettings.Name, "Otovarka").Replace("\\", "/");
 
-                if (File.Exists(localOtovarkaPath + "\\in.flg") && File.Exists(localOtovarkaPath + "\\import.txt"))
+                UploadImportFile(localOtovarkaPath, remoteOtovarkaPath);
+            }
+
+
+            void UploadImportFile(string localPath = null, string remotePath = null)
+            {
+                string LocalInFile = Path.Combine(localPath, "in.flg");
+                string LocalImportFile = Path.Combine(localPath, "import.txt");
+
+                string RemoteInFile = Path.Combine(remotePath, "in.flg").Replace("\\", "/");
+                string RemoteImportFile = Path.Combine(remotePath, "import.txt").Replace("\\", "/");
+                string RemoteImportTempFile = Path.Combine(remotePath, "import.tmp").Replace("\\", "/");
+
+
+                if (File.Exists(LocalInFile) && File.Exists(LocalImportFile))
                 {
-                    TransferClient.UploadFiles(localOtovarkaPath + "\\import.txt", remoteOtovarkaPath + "/import.txt");
-                    TransferClient.UploadFiles(localOtovarkaPath + "\\in.flg", remoteOtovarkaPath + "/in.flg");
+                    TransferClient.UploadFiles(LocalImportFile, RemoteImportTempFile);
+                    TransferClient.RenameFile(RemoteImportTempFile, RemoteImportFile);
+                    TransferClient.UploadFiles(LocalInFile, RemoteInFile);
+
                     //Remove file
-                    File.Delete(localOtovarkaPath + "\\in.flg");
-                    File.Delete(localOtovarkaPath + "\\import.txt");
+                    File.Delete(LocalInFile);
+                    File.Delete(LocalImportFile);
                 }
             }
+
         }
     }
 

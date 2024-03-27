@@ -26,13 +26,13 @@ ProgramSettings.json
     {
         "Name": "Asino",
         "KkmCount": 1,
-        "Otovatka": true,
+        "Otovarka": true,
         "Transport": "ftp"
         },
     {
         "Name": "Bakchar",
         "KkmCount": 2,
-        "Otovatka": false,
+        "Otovarka": false,
         "Transport": "ftp"
     }
     ]

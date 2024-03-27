@@ -1,5 +1,7 @@
 ﻿using Newtonsoft.Json;
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -19,55 +21,84 @@ namespace FileTransferClient
         private YDSettings Settings;
         private string api_url = "https://cloud-api.yandex.net/v1/disk/";
 
+
+        public bool ExistsFile(string remotePath)
+        {
+            string urlParameters;
+            if (string.IsNullOrEmpty(remotePath))
+            {
+                return false;
+            }
+
+            using (HttpClient client = new HttpClient { BaseAddress = new Uri(this.api_url) })
+            {
+                using (HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, api_url))
+                {
+                    client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("OAuth", this.Settings.AccessToken);
+                    string pth = WebUtility.UrlEncode($"{this.Settings.rootPath}{remotePath}"); //
+
+                    urlParameters = $"resources?path={pth}";
+
+                    HttpResponseMessage response = client.GetAsync(urlParameters).Result;  // Blocking call! Program will wait here until a response is received or a timeout occurs.
+                    if (response.IsSuccessStatusCode)
+                    {
+                        return true;
+                    }
+                    return false;
+                }
+            }
+        }
+
         public void UploadFiles(string localPath, string remotePath)
         {
             string urlParameters;
 
-            HttpClient client = new HttpClient
+            using (HttpClient client = new HttpClient { BaseAddress = new Uri(this.api_url) })
             {
-                BaseAddress = new Uri(this.api_url)
-            };
 
 
-            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("OAuth", this.Settings.AccessToken);
-            urlParameters = $"resources/upload?path={this.Settings.rootPath}/{WebUtility.UrlEncode(remotePath)}&overwrite=true";
+                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("OAuth", this.Settings.AccessToken);
+                string pth = WebUtility.UrlEncode($"{this.Settings.rootPath}{remotePath}"); //
 
-            MyLogger.Log.Warn($"Запрос ссылки для отправки файла {this.Settings.rootPath}/{remotePath}");
+                urlParameters = $"resources/upload?path={pth}&overwrite=true";
 
-            HttpResponseMessage response = client.GetAsync(urlParameters).Result;  // Blocking call! Program will wait here until a response is received or a timeout occurs.
-            if (response.IsSuccessStatusCode)
-            {
-                var dataObjects = response.Content.ReadAsStringAsync().Result;
-                DownloadInfo downloadInfo = JsonConvert.DeserializeObject<DownloadInfo>(dataObjects);
+                MyLogger.Log.Warn($"Запрос ссылки для отправки файла {this.Settings.rootPath}{remotePath}");
 
-                
-                MyLogger.Log.Info("{0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
-                MyLogger.Log.Info("Upload link: " + downloadInfo.href);
-                MyLogger.Log.Info("Starting upload...");
-
-
-                var fileStream = File.OpenRead(localPath);
-                var content = new StreamContent(fileStream);
-                content.Headers.Add("Content-Type", "application/octet-stream");
-                response = client.PutAsync(downloadInfo.href, content).Result;
-
-                if ((int)response.StatusCode == 201)
+                HttpResponseMessage response = client.GetAsync(urlParameters).Result;  // Blocking call! Program will wait here until a response is received or a timeout occurs.
+                if (response.IsSuccessStatusCode)
                 {
-                    
-                    MyLogger.Log.Info("Upload complete");
+                    var dataObjects = response.Content.ReadAsStringAsync().Result;
+                    DownloadInfo downloadInfo = JsonConvert.DeserializeObject<DownloadInfo>(dataObjects);
+
+
+                    MyLogger.Log.Info("{0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                    MyLogger.Log.Info("Upload link: " + downloadInfo.href);
+                    MyLogger.Log.Info("Starting upload...");
+
+
+                    var fileStream = File.OpenRead(localPath);
+                    var content = new StreamContent(fileStream);
+                    content.Headers.Add("Content-Type", "application/octet-stream");
+                    response = client.PutAsync(downloadInfo.href, content).Result;
+
+                    if ((int)response.StatusCode == 201)
+                    {
+
+                        MyLogger.Log.Info("Upload complete");
+                    }
+                    else
+                    {
+                        MyLogger.Log.Error("Bad {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                    }
+
                 }
                 else
                 {
-                    MyLogger.Log.Error("Bad {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                    MyLogger.Log.Error("BAD {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
                 }
-
             }
-            else
-            {
-                MyLogger.Log.Error("BAD {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
-            }
-            client.Dispose();
 
         }
 
@@ -78,62 +109,98 @@ namespace FileTransferClient
             public bool templated { get; set; }
         }
 
+        public void RenameFile(string sourceRemoteFilePath, string newRemoteFilePath)
+        {
+            string urlParameters;
+            using (HttpClient client = new HttpClient { BaseAddress = new Uri(this.api_url) })
+            {
+                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("OAuth", this.Settings.AccessToken);
+
+                urlParameters = $"resources/move?from={this.Settings.rootPath}{WebUtility.UrlEncode(sourceRemoteFilePath)}&path={this.Settings.rootPath}{WebUtility.UrlEncode(newRemoteFilePath)}&overwrite=true";
+
+                var content = new FormUrlEncodedContent(new Dictionary<string, string>
+                {
+                    //{ "from", WebUtility.UrlEncode($"{this.Settings.rootPath}{sourceRemoteFilePath}" )},
+                    //{ "path", WebUtility.UrlEncode($"{this.Settings.rootPath}{newRemoteFilePath}" )},
+                    //{ "overwrite", "true" }
+                });
+
+
+
+                MyLogger.Log.Warn("Переименование файла " + sourceRemoteFilePath);
+
+                HttpResponseMessage response = client.PostAsync(urlParameters, content).Result;
+
+                if (response.IsSuccessStatusCode)
+                {
+                    MyLogger.Log.Warn("Файл переименован " + newRemoteFilePath);
+                }
+                else
+                {
+                    MyLogger.Log.Warn("BAD {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                }
+            }
+
+        }
 
         public void DownloadFiles(string remotePath, string localPath)
         {
             string urlParameters;
 
-            HttpClient client = new HttpClient
+            using (HttpClient client = new HttpClient { BaseAddress = new Uri(this.api_url) })
             {
-                BaseAddress = new Uri(this.api_url)
-            };
-
-            
-            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("OAuth", this.Settings.AccessToken);
-            urlParameters = $"resources/download?path={this.Settings.rootPath}/{WebUtility.UrlEncode(remotePath)}";
 
 
-            MyLogger.Log.Warn("Запрос ссылки для скачивания файла "+remotePath);
+                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("OAuth", this.Settings.AccessToken);
 
-            HttpResponseMessage response = client.GetAsync(urlParameters).Result;  // Blocking call! Program will wait here until a response is received or a timeout occurs.
-            
-
-            if (response.IsSuccessStatusCode)
-            {
-                var dataObjects = response.Content.ReadAsStringAsync().Result;
-                
-                DownloadInfo downloadInfo = JsonConvert.DeserializeObject<DownloadInfo>(dataObjects);
-
-                MyLogger.Log.Warn("Получена ссылка для загрузки "+downloadInfo.href);
+                string pth = WebUtility.UrlEncode($"{this.Settings.rootPath}{remotePath}"); //
+                urlParameters = $"resources/download?path={pth}";
 
 
-                var fileStream = File.OpenWrite(localPath);
+                MyLogger.Log.Warn("Запрос ссылки для скачивания файла " + remotePath);
 
-                var content = new StreamContent(fileStream);
-                content.Headers.Add("Content-Type", "application/octet-stream");
+                HttpResponseMessage response = client.GetAsync(urlParameters).Result;  // Blocking call! Program will wait here until a response is received or a timeout occurs.
 
-                // download file from downloadLink.href with GET method and save to localPath
 
-                response = client.GetAsync(downloadInfo.href).Result;
                 if (response.IsSuccessStatusCode)
                 {
-                    MyLogger.Log.Warn("Загрузка файла "+downloadInfo.href);
-                    fileStream.Write(response.Content.ReadAsByteArrayAsync().Result, 0, response.Content.ReadAsByteArrayAsync().Result.Length);
-                    MyLogger.Log.Warn("OK {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
-                }
+                    var dataObjects = response.Content.ReadAsStringAsync().Result;
 
+                    DownloadInfo downloadInfo = JsonConvert.DeserializeObject<DownloadInfo>(dataObjects);
+
+                    MyLogger.Log.Warn("Получена ссылка для загрузки " + downloadInfo.href);
+
+
+                    using (var fileStream = File.Create(localPath))
+                    {
+
+                        var content = new StreamContent(fileStream);
+                        content.Headers.Add("Content-Type", "application/octet-stream");
+
+                        // download file from downloadLink.href with GET method and save to localPath
+
+                        response = client.GetAsync(downloadInfo.href).Result;
+                        if (response.IsSuccessStatusCode)
+                        {
+                            MyLogger.Log.Warn("Загрузка файла " + downloadInfo.href);
+                            fileStream.Write(response.Content.ReadAsByteArrayAsync().Result, 0, response.Content.ReadAsByteArrayAsync().Result.Length);
+                            MyLogger.Log.Warn("OK {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                        }
+
+                        else
+                        {
+                            MyLogger.Log.Warn("Bad {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                        }
+                    }
+
+                }
                 else
                 {
-                    MyLogger.Log.Warn("Bad {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                    MyLogger.Log.Warn("BAD {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
                 }
-
             }
-            else
-            {
-                MyLogger.Log.Warn("BAD {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
-            }
-            client.Dispose();
         }
 
 
@@ -141,29 +208,28 @@ namespace FileTransferClient
         {
             string urlParameters;
 
-            HttpClient client = new HttpClient
+            using (HttpClient client = new HttpClient { BaseAddress = new Uri(this.api_url) })
             {
-                BaseAddress = new Uri(this.api_url)
-            };
 
-            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("OAuth", this.Settings.AccessToken);
+                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("OAuth", this.Settings.AccessToken);
 
-            urlParameters = $"resources?path={this.Settings.rootPath}/{WebUtility.UrlEncode(remotePath)}&permanently=true";
+                string pth = WebUtility.UrlEncode($"{this.Settings.rootPath}{remotePath}"); //
+                urlParameters = $"resources?path={pth}&permanently=true";
 
-            MyLogger.Log.Info("Удаление файла "+remotePath);
+                MyLogger.Log.Info("Удаление файла " + remotePath);
 
-            HttpResponseMessage response = client.DeleteAsync(urlParameters).Result;  // Blocking call! Program will wait here until a response is received or a timeout occurs.
-            if ((int)response.StatusCode == 204)
-            {
-                
-                MyLogger.Log.Info("OK {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                HttpResponseMessage response = client.DeleteAsync(urlParameters).Result;  // Blocking call! Program will wait here until a response is received or a timeout occurs.
+                if ((int)response.StatusCode == 204)
+                {
+
+                    MyLogger.Log.Info("OK {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                }
+                else
+                {
+                    MyLogger.Log.Error("BAD {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                }
             }
-            else
-            {
-                MyLogger.Log.Error("BAD {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
-            }
-            client.Dispose();
         }
 
 
@@ -172,47 +238,44 @@ namespace FileTransferClient
 
             string urlParameters;
 
-            HttpClient client = new HttpClient
+            using (HttpClient client = new HttpClient { BaseAddress = new Uri(this.api_url) })
             {
-                BaseAddress = new Uri(this.api_url)
-            };
+                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("OAuth", this.Settings.AccessToken);
 
-            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("OAuth", this.Settings.AccessToken);
+                string pth = WebUtility.UrlEncode($"{this.Settings.rootPath}{remotePath}"); //
+                urlParameters = $"resources?path={pth}&fields=md5";
 
-            urlParameters = $"resources?path={this.Settings.rootPath}/{WebUtility.UrlEncode(remotePath)}&fields=md5";
+                MyLogger.Log.Info("Сравнение файла " + remotePath);
 
-            MyLogger.Log.Info("Сравнение файла "+remotePath);
-
-            HttpResponseMessage response = client.GetAsync(urlParameters).Result;  // Blocking call! Program will wait here until a response is received or a timeout occurs.
-            if ((int)response.StatusCode == 200)
-            {
-                string LocalMD = CalculateMD5(localPath);
-
-                var dataObjects = response.Content.ReadAsStringAsync().Result;
-
-                dynamic jsonObj = JsonConvert.DeserializeObject(dataObjects);
-                string RemoteMD = jsonObj.md5;
-
-                if (LocalMD == RemoteMD)
+                HttpResponseMessage response = client.GetAsync(urlParameters).Result;  // Blocking call! Program will wait here until a response is received or a timeout occurs.
+                if ((int)response.StatusCode == 200)
                 {
-                    MyLogger.Log.Info("Файлы совпадают {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
-                    return true;
+                    string LocalMD = CalculateMD5(localPath);
+
+                    var dataObjects = response.Content.ReadAsStringAsync().Result;
+
+                    dynamic jsonObj = JsonConvert.DeserializeObject(dataObjects);
+                    string RemoteMD = jsonObj.md5;
+
+                    if (LocalMD == RemoteMD)
+                    {
+                        MyLogger.Log.Info("Файлы совпадают {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                        return true;
+                    }
+                    else
+                    {
+                        MyLogger.Log.Error("Файлы не совпадают {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                        return false;
+                    }
+
                 }
                 else
                 {
-                    MyLogger.Log.Error("Файлы не совпадают {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
-                    return false;
+                    MyLogger.Log.Error("BAD {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
                 }
-
+                return false;
             }
-            else
-            {
-                MyLogger.Log.Error("BAD {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
-            }
-            client.Dispose();
-
-            return false;
         }
 
         public string CalculateMD5(string filePath)
