@@ -99,21 +99,7 @@ namespace FileTransferClient
             }
         }
 
-        //public void DownloadFiles(string remotePath, string localPath)
-        //{
-        //    string ftpServer = $"ftp://{this.Settings.Server}{this.Settings.rootPath}";
 
-        //    FtpWebRequest request = (FtpWebRequest)WebRequest.Create(ftpServer + remotePath);
-        //    request.Method = WebRequestMethods.Ftp.DownloadFile;
-        //    request.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
-
-        //    using (FtpWebResponse response = (FtpWebResponse)request.GetResponse())
-        //    using (Stream responseStream = response.GetResponseStream())
-        //    using (FileStream fileStream = new FileStream(localPath, FileMode.Create))
-        //    {
-        //        responseStream.CopyTo(fileStream);
-        //    }
-        //}
 
 
         public void DeleteFile(string remotePath)

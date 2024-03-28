@@ -1,7 +1,6 @@
 ﻿using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -64,7 +63,7 @@ namespace FileTransferClient
 
                 urlParameters = $"resources/upload?path={pth}&overwrite=true";
 
-                MyLogger.Log.Warn($"Запрос ссылки для отправки файла {this.Settings.rootPath}{remotePath}");
+                MyLogger.Log.Debug($"Запрос ссылки для отправки файла {this.Settings.rootPath}{remotePath}");
 
                 HttpResponseMessage response = client.GetAsync(urlParameters).Result;  // Blocking call! Program will wait here until a response is received or a timeout occurs.
                 if (response.IsSuccessStatusCode)
@@ -73,9 +72,9 @@ namespace FileTransferClient
                     DownloadInfo downloadInfo = JsonConvert.DeserializeObject<DownloadInfo>(dataObjects);
 
 
-                    MyLogger.Log.Info("{0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
-                    MyLogger.Log.Info("Upload link: " + downloadInfo.href);
-                    MyLogger.Log.Info("Starting upload...");
+                    MyLogger.Log.Debug("{0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                    MyLogger.Log.Debug("Upload link: " + downloadInfo.href);
+                    MyLogger.Log.Debug("Starting upload...");
 
 
                     var fileStream = File.OpenRead(localPath);
@@ -86,17 +85,17 @@ namespace FileTransferClient
                     if ((int)response.StatusCode == 201)
                     {
 
-                        MyLogger.Log.Info("Upload complete");
+                        MyLogger.Log.Debug("Upload complete");
                     }
                     else
                     {
-                        MyLogger.Log.Error("Bad {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                        MyLogger.Log.Debug("Bad {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
                     }
 
                 }
                 else
                 {
-                    MyLogger.Log.Error("BAD {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                    MyLogger.Log.Debug("BAD {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
                 }
             }
 
@@ -128,17 +127,17 @@ namespace FileTransferClient
 
 
 
-                MyLogger.Log.Warn("Переименование файла " + sourceRemoteFilePath);
+                MyLogger.Log.Debug("Переименование файла " + sourceRemoteFilePath);
 
                 HttpResponseMessage response = client.PostAsync(urlParameters, content).Result;
 
                 if (response.IsSuccessStatusCode)
                 {
-                    MyLogger.Log.Warn("Файл переименован " + newRemoteFilePath);
+                    MyLogger.Log.Debug("Файл переименован " + newRemoteFilePath);
                 }
                 else
                 {
-                    MyLogger.Log.Warn("BAD {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                    MyLogger.Log.Debug("BAD {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
                 }
             }
 
@@ -159,7 +158,7 @@ namespace FileTransferClient
                 urlParameters = $"resources/download?path={pth}";
 
 
-                MyLogger.Log.Warn("Запрос ссылки для скачивания файла " + remotePath);
+                MyLogger.Log.Debug("Запрос ссылки для скачивания файла " + remotePath);
 
                 HttpResponseMessage response = client.GetAsync(urlParameters).Result;  // Blocking call! Program will wait here until a response is received or a timeout occurs.
 
@@ -170,7 +169,7 @@ namespace FileTransferClient
 
                     DownloadInfo downloadInfo = JsonConvert.DeserializeObject<DownloadInfo>(dataObjects);
 
-                    MyLogger.Log.Warn("Получена ссылка для загрузки " + downloadInfo.href);
+                    MyLogger.Log.Debug("Получена ссылка для загрузки " + downloadInfo.href);
 
 
                     using (var fileStream = File.Create(localPath))
@@ -184,21 +183,21 @@ namespace FileTransferClient
                         response = client.GetAsync(downloadInfo.href).Result;
                         if (response.IsSuccessStatusCode)
                         {
-                            MyLogger.Log.Warn("Загрузка файла " + downloadInfo.href);
+                            MyLogger.Log.Debug("Загрузка файла " + downloadInfo.href);
                             fileStream.Write(response.Content.ReadAsByteArrayAsync().Result, 0, response.Content.ReadAsByteArrayAsync().Result.Length);
-                            MyLogger.Log.Warn("OK {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                            MyLogger.Log.Debug("OK {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
                         }
 
                         else
                         {
-                            MyLogger.Log.Warn("Bad {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                            MyLogger.Log.Debug("Bad {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
                         }
                     }
 
                 }
                 else
                 {
-                    MyLogger.Log.Warn("BAD {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                    MyLogger.Log.Debug("BAD {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
                 }
             }
         }
@@ -217,17 +216,17 @@ namespace FileTransferClient
                 string pth = WebUtility.UrlEncode($"{this.Settings.rootPath}{remotePath}"); //
                 urlParameters = $"resources?path={pth}&permanently=true";
 
-                MyLogger.Log.Info("Удаление файла " + remotePath);
+                MyLogger.Log.Debug("Удаление файла " + remotePath);
 
                 HttpResponseMessage response = client.DeleteAsync(urlParameters).Result;  // Blocking call! Program will wait here until a response is received or a timeout occurs.
                 if ((int)response.StatusCode == 204)
                 {
 
-                    MyLogger.Log.Info("OK {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                    MyLogger.Log.Debug("OK {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
                 }
                 else
                 {
-                    MyLogger.Log.Error("BAD {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                    MyLogger.Log.Debug("BAD {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
                 }
             }
         }
@@ -246,7 +245,7 @@ namespace FileTransferClient
                 string pth = WebUtility.UrlEncode($"{this.Settings.rootPath}{remotePath}"); //
                 urlParameters = $"resources?path={pth}&fields=md5";
 
-                MyLogger.Log.Info("Сравнение файла " + remotePath);
+                MyLogger.Log.Debug("Сравнение файла " + remotePath);
 
                 HttpResponseMessage response = client.GetAsync(urlParameters).Result;  // Blocking call! Program will wait here until a response is received or a timeout occurs.
                 if ((int)response.StatusCode == 200)
@@ -260,19 +259,19 @@ namespace FileTransferClient
 
                     if (LocalMD == RemoteMD)
                     {
-                        MyLogger.Log.Info("Файлы совпадают {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                        MyLogger.Log.Debug("Файлы совпадают {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
                         return true;
                     }
                     else
                     {
-                        MyLogger.Log.Error("Файлы не совпадают {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                        MyLogger.Log.Debug("Файлы не совпадают {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
                         return false;
                     }
 
                 }
                 else
                 {
-                    MyLogger.Log.Error("BAD {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
+                    MyLogger.Log.Debug("BAD {0} ({1})", (int)response.StatusCode, response.ReasonPhrase);
                 }
                 return false;
             }

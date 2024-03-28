@@ -5,7 +5,6 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
-using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 
 namespace FileTransferClient
 {
@@ -13,12 +12,11 @@ namespace FileTransferClient
     class MagazineSettings
     {
         public string Name { get; set; }
-        public int KkmCount { get; set; }
+        public int KkmNumber { get; set; }
+        public string InFolderName { get; set; }
+        public string OutFolderName { get; set; }
         public bool Otovarka { get; set; }
         public string Transport { get; set; }
-
-
-
     }
 
     class ProgramSettings
@@ -27,7 +25,7 @@ namespace FileTransferClient
         public string RootPath { get; set; }
 
         public int ScanInterval { get; set; }
-        public List<MagazineSettings> MagazineSettingsList { get; set; }
+
     }
 
 
@@ -40,6 +38,7 @@ namespace FileTransferClient
 
         public Program()
         {
+
             // Create a simple form without a visible window
             this.WindowState = FormWindowState.Minimized;
             this.ShowInTaskbar = false;
@@ -47,7 +46,7 @@ namespace FileTransferClient
 
             // Initialize the system tray icon
             TrayIcon = new NotifyIcon();
-            TrayIcon.Text = "File Transfer Client";
+            TrayIcon.Text = "File Transfer";
 
             // Load an icon resource for the tray
             TrayIcon.Icon = TrayIcon.Icon = SystemIcons.Asterisk; // new System.Drawing.Icon("icon.ico");
@@ -92,7 +91,27 @@ namespace FileTransferClient
             }
         }
 
-        static ProgramSettings LoadMagSettingsFromJSON(string jsonFilePath)
+
+        static List<MagazineSettings> LoadMagSettingsFromJSON(string jsonFilePath)
+        {
+            using (StreamReader file = File.OpenText(jsonFilePath))
+            {
+                JsonSerializer serializer = new JsonSerializer();
+                return (List<MagazineSettings>)serializer.Deserialize(file, typeof(List<MagazineSettings>));
+            }
+        }
+
+        static void SaveMagSettingsToJSON(List<MagazineSettings> magSettings, string jsonFilePath)
+        {
+            using (StreamWriter file = File.CreateText(jsonFilePath))
+            {
+                JsonSerializer serializer = new JsonSerializer();
+                serializer.Serialize(file, magSettings);
+            }
+        }
+
+
+        static ProgramSettings LoadProgSettingsFromJSON(string jsonFilePath)
         {
             // Load FTP settings from a JSON file
             using (StreamReader file = File.OpenText(jsonFilePath))
@@ -102,12 +121,12 @@ namespace FileTransferClient
             }
         }
 
-        static void SaveMagSettingsToJSON(ProgramSettings magSettings, string jsonFilePath)
+        static void SaveProgSettingsToJSON(ProgramSettings progSettings, string jsonFilePath)
         {
             using (StreamWriter file = File.CreateText(jsonFilePath))
             {
                 JsonSerializer serializer = new JsonSerializer();
-                serializer.Serialize(file, magSettings);
+                serializer.Serialize(file, progSettings);
             }
         }
 
@@ -160,22 +179,30 @@ namespace FileTransferClient
             //загрузить из него значения
             if (File.Exists("ProgramSettings.json"))
             {
-                programSettings = LoadMagSettingsFromJSON("ProgramSettings.json");
+                programSettings = LoadProgSettingsFromJSON("ProgramSettings.json");
+            }
+            else
+            {
+                programSettings = new ProgramSettings();
+                programSettings.RootPath = "D:\\VSProjects\\mag_obmen\\server_folders";
+                programSettings.TransferSide = "Server";
+                SaveProgSettingsToJSON(programSettings, "ProgramSettings.json");
+                throw new FileNotFoundException("ProgramSettings.json not found");
+            }
+
+            if (File.Exists("MagSettings.json"))
+            {
+                MagazineSettingsList = LoadMagSettingsFromJSON("MagSettings.json");
             }
             else
             {
                 MagazineSettingsList = new List<MagazineSettings>{
-                    new MagazineSettings { Name = "Asino", KkmCount = 1, Otovarka = true, Transport = "ftp" }
-                    , new MagazineSettings {Name = "Bakchar", KkmCount = 2, Otovarka = false, Transport = "ftp" }
+                    new MagazineSettings { Name = "Asino", KkmNumber = 1, Otovarka = true, InFolderName = "In", OutFolderName = "Out", Transport = "ftp" }
+                    , new MagazineSettings {Name = "Bakchar", KkmNumber = 2, Otovarka = false,InFolderName = "In1", OutFolderName = "Out1", Transport = "ftp" }
                 };
 
-                programSettings = new ProgramSettings();
-                programSettings.MagazineSettingsList = MagazineSettingsList;
-                programSettings.RootPath = "D:\\VSProjects\\mag_obmen\\server_folders";
-                programSettings.TransferSide = "Server";
-                SaveMagSettingsToJSON(programSettings, "ProgramSettings.json");
-
-                throw new FileNotFoundException("ProgramSettings.json not found");
+                SaveMagSettingsToJSON(MagazineSettingsList, "MagSettings.json");
+                throw new FileNotFoundException("MagSettings.json not found");
             }
 
             TrayIcon.Text = TrayIcon.Text + " " + programSettings.TransferSide;
@@ -183,7 +210,7 @@ namespace FileTransferClient
             //create timer for run StartTransfer
 
             timer.Interval = programSettings.ScanInterval * 1000; // 10 seconds
-            timer.Tick += (sender, e) => StartTransfer(programSettings);
+            timer.Tick += (sender, e) => StartTransfer(programSettings, MagazineSettingsList);
 
             // Start the timer
             timer.Start();
@@ -191,11 +218,11 @@ namespace FileTransferClient
         }
 
 
-        private static void StartTransfer(ProgramSettings programSettings)
+        private static void StartTransfer(ProgramSettings programSettings, List<MagazineSettings> MagazineSettingsList)
         {
-            MyLogger.Log.Info("StartTransfer()");
+            MyLogger.Log.Debug("StartTransfer");
 
-            foreach (MagazineSettings magazineSettings in programSettings.MagazineSettingsList)
+            foreach (MagazineSettings magazineSettings in MagazineSettingsList)
             {
                 IFileTransferClient client;
                 if (magazineSettings.Transport == "ftp")
@@ -208,7 +235,7 @@ namespace FileTransferClient
                 }
                 else
                 {
-                    throw new Exception($"Unknown transport {magazineSettings.Transport}");
+                    throw new Exception($"Unknown transport {magazineSettings.Transport} need to be ftp or yd");
                 }
 
 
@@ -228,42 +255,56 @@ namespace FileTransferClient
         {
             //magazine mode
 
-            for (int i = 1; i <= magazineSettings.KkmCount; i++)
+            string localOutPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, magazineSettings.OutFolderName);
+            string remoteOutPath = Path.Combine("/", magazineSettings.Name, magazineSettings.OutFolderName).Replace("\\", "/");
+            string localInPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, magazineSettings.InFolderName);
+            string remoteInPath = Path.Combine("/", magazineSettings.Name, magazineSettings.InFolderName).Replace("\\", "/");
+
+            if (!CheckFolders(magazineSettings.Name, localOutPath, remoteOutPath, localInPath, remoteInPath, TransferClient))
+                return;
+
+            if (!File.Exists(localInPath + "\\in.flg") && File.Exists(localInPath + "\\import.txt"))
             {
-                string localOutPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, "Out" + ((i != 1) ? (i.ToString()) : ""));
-                string remoteOutPath = Path.Combine("/", magazineSettings.Name, "Out" + ((i != 1) ? (i.ToString()) : "")).Replace("\\", "/");
-                string localInPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, "In" + ((i != 1) ? (i.ToString()) : ""));
-                string remoteInPath = Path.Combine("/", magazineSettings.Name, "In" + ((i != 1) ? (i.ToString()) : "")).Replace("\\", "/");
-
-                if (!File.Exists(localInPath + "\\in.flg") && File.Exists(localInPath + "\\import.txt"))
-                {
-                    string secondLine = File.ReadLines(localInPath + "\\import.txt").ElementAtOrDefault(1);
-                    if (secondLine != null && secondLine.Contains("@"))
-                        UploadImportAFile(localInPath, remoteInPath);
-                }
-
-                string LoadResultName = "LoadResult001.txt";
-                string SaveResultName = "SaveResult001.txt";
-
-                if (File.Exists(localOutPath + $"\\{LoadResultName}"))
-                    if (!TransferClient.CompareFiles(remoteOutPath + $"/{LoadResultName}", localOutPath + $"\\{LoadResultName}"))
-                        TransferClient.UploadFiles(localOutPath + $"\\{LoadResultName}", remoteOutPath + $"/{LoadResultName}");
-
-                if (File.Exists(localOutPath + $"\\{SaveResultName}"))
-                    if (!TransferClient.CompareFiles(remoteOutPath + $"/{SaveResultName}", localOutPath + $"\\{SaveResultName}"))
-                        TransferClient.UploadFiles(localOutPath + $"\\{SaveResultName}", remoteOutPath + $"/{SaveResultName}");
-
-                UploadExportFile(localOutPath, remoteOutPath);
-
-                DownloadImportFile(remoteInPath, localInPath);
-
+                string secondLine = File.ReadLines(localInPath + "\\import.txt").ElementAtOrDefault(1);
+                if (secondLine != null && secondLine.Contains("@"))
+                    UploadImportAFile(localInPath, remoteInPath);
             }
+
+            string LoadResultName = "LoadResult001.txt";
+            string SaveResultName = "SaveResult001.txt";
+
+            if (File.Exists(localOutPath + $"\\{LoadResultName}"))
+                if (!TransferClient.CompareFiles(remoteOutPath + $"/{LoadResultName}", localOutPath + $"\\{LoadResultName}"))
+                    TransferClient.UploadFiles(localOutPath + $"\\{LoadResultName}", remoteOutPath + $"/{LoadResultName}");
+
+            if (File.Exists(localOutPath + $"\\{SaveResultName}"))
+                if (!TransferClient.CompareFiles(remoteOutPath + $"/{SaveResultName}", localOutPath + $"\\{SaveResultName}"))
+                    TransferClient.UploadFiles(localOutPath + $"\\{SaveResultName}", remoteOutPath + $"/{SaveResultName}");
+
+            UploadExportFile(localOutPath, remoteOutPath);
+
+            DownloadImportFile(remoteInPath, localInPath);
 
             if (magazineSettings.Otovarka)
             {
                 string localOtovarkaPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, "Otovarka");
                 string remoteOtovarkaPath = Path.Combine("/", magazineSettings.Name, "Otovarka").Replace("\\", "/");
-                DownloadImportFile(remoteOtovarkaPath, localOtovarkaPath);
+
+                bool notExistsFolders = false;
+                if (!Directory.Exists(localOtovarkaPath))
+                {
+                    MyLogger.Log.Error($"Local In Path for {magazineSettings.Name} not exists {localOtovarkaPath}");
+                    notExistsFolders = true;
+                }
+
+                if (!TransferClient.ExistsFile(remoteOtovarkaPath))
+                {
+                    MyLogger.Log.Error($"Remote Out Path for {magazineSettings.Name} not exists {remoteOtovarkaPath}");
+                    notExistsFolders = true;
+                }
+
+                if (!notExistsFolders)
+                    DownloadImportFile(remoteOtovarkaPath, localOtovarkaPath);
             }
 
             void DownloadImportFile(string remotePath = null, string localPath = null)
@@ -323,58 +364,72 @@ namespace FileTransferClient
         {
             // server mode
 
-            for (int i = 1; i <= magazineSettings.KkmCount; i++)
+            string localInPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, magazineSettings.InFolderName);
+            string remoteInPath = Path.Combine("/", magazineSettings.Name, magazineSettings.InFolderName).Replace("\\", "/");
+            string localOutPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, magazineSettings.OutFolderName);
+            string remoteOutPath = Path.Combine("/", magazineSettings.Name, magazineSettings.OutFolderName).Replace("\\", "/");
+
+            if (!CheckFolders(magazineSettings.Name, localOutPath, remoteOutPath, localInPath, remoteInPath, TransferClient))
+                return;
+            
+            UploadImportFile(localInPath, remoteInPath);
+
+            string LoadResultName = "LoadResult001.txt";
+            string SaveResultName = "SaveResult001.txt";
+
+            if (!File.Exists(localOutPath + $"\\{LoadResultName}") || !TransferClient.CompareFiles(remoteOutPath + $"/{LoadResultName}", localOutPath + $"\\{LoadResultName}"))
+                TransferClient.DownloadFiles(remoteOutPath + $"/{LoadResultName}", localOutPath + $"\\{LoadResultName}");
+
+            if (!File.Exists(localOutPath + $"\\{SaveResultName}") || !TransferClient.CompareFiles(remoteOutPath + $"/{SaveResultName}", localOutPath + $"\\{SaveResultName}"))
+                TransferClient.DownloadFiles(remoteOutPath + $"/{SaveResultName}", localOutPath + $"\\{SaveResultName}");
+
+            string exportName = "export.txt";
+            string exportTempName = "export.tmp";
+
+            TransferClient.DownloadFiles(remoteOutPath + $"/{exportName}", localOutPath + $"\\{exportTempName}");
+
+            if (File.Exists(localOutPath + $"\\{exportTempName}"))
             {
-                //Upload files
-                string localInPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, "In" + ((i != 1) ? (i.ToString()) : ""));
-                string remoteInPath = Path.Combine("/", magazineSettings.Name, "In" + ((i != 1) ? (i.ToString()) : "")).Replace("\\", "/");
-                UploadImportFile(localInPath, remoteInPath);
-
-                string localOutPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, "Out" + ((i != 1) ? (i.ToString()) : ""));
-                string remoteOutPath = Path.Combine("/", magazineSettings.Name, "Out" + ((i != 1) ? (i.ToString()) : "")).Replace("\\", "/");
-
-                string LoadResultName = "LoadResult001.txt";
-                string SaveResultName = "SaveResult001.txt";
-
-                if (!File.Exists(localOutPath + $"\\{LoadResultName}") ||  !TransferClient.CompareFiles(remoteOutPath + $"/{LoadResultName}", localOutPath + $"\\{LoadResultName}"))
-                    TransferClient.DownloadFiles(remoteOutPath + $"/{LoadResultName}", localOutPath + $"\\{LoadResultName}");
-
-                if (!File.Exists(localOutPath + $"\\{SaveResultName}") || !TransferClient.CompareFiles(remoteOutPath + $"/{SaveResultName}", localOutPath + $"\\{SaveResultName}"))
-                    TransferClient.DownloadFiles(remoteOutPath + $"/{SaveResultName}", localOutPath + $"\\{SaveResultName}");
-
-                string exportName = "export.txt";
-                string exportTempName = "export.tmp";
-
-                TransferClient.DownloadFiles(remoteOutPath + $"/{exportName}", localOutPath + $"\\{exportTempName}");
-
-                if (File.Exists(localOutPath + $"\\{exportTempName}"))
-                {
-                    if (File.Exists(localOutPath + $"\\{exportName}"))
-                        File.Delete(localOutPath + $"\\{exportName}");
-                    File.Move(localOutPath + $"\\{exportTempName}", localOutPath + $"\\{exportName}");
-                    TransferClient.DeleteFile(remoteOutPath + $"/{exportName}");
-                }
-
-                string importAName = "import@.txt";
-                string importATempName = "import@.tmp";
-
-                TransferClient.DownloadFiles(remoteInPath + $"/{importAName}", localInPath + $"\\{importATempName}");
-
-                if (File.Exists(localInPath + $"\\{importATempName}"))
-                {
-                    if (File.Exists(localInPath + $"\\{importAName}"))
-                        File.Delete(localInPath + $"\\{importAName}");
-                    File.Move(localInPath + $"\\{importATempName}", localInPath + $"\\{importAName}");
-                    TransferClient.DeleteFile(remoteInPath + $"/{importAName}");
-                }
+                if (File.Exists(localOutPath + $"\\{exportName}"))
+                    File.Delete(localOutPath + $"\\{exportName}");
+                File.Move(localOutPath + $"\\{exportTempName}", localOutPath + $"\\{exportName}");
+                TransferClient.DeleteFile(remoteOutPath + $"/{exportName}");
             }
+
+            string importAName = "import@.txt";
+            string importATempName = "import@.tmp";
+
+            TransferClient.DownloadFiles(remoteInPath + $"/{importAName}", localInPath + $"\\{importATempName}");
+
+            if (File.Exists(localInPath + $"\\{importATempName}"))
+            {
+                if (File.Exists(localInPath + $"\\{importAName}"))
+                    File.Delete(localInPath + $"\\{importAName}");
+                File.Move(localInPath + $"\\{importATempName}", localInPath + $"\\{importAName}");
+                TransferClient.DeleteFile(remoteInPath + $"/{importAName}");
+            }
+
 
             if (magazineSettings.Otovarka)
             {
                 string localOtovarkaPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, "Otovarka");
                 string remoteOtovarkaPath = Path.Combine("/", magazineSettings.Name, "Otovarka").Replace("\\", "/");
 
-                UploadImportFile(localOtovarkaPath, remoteOtovarkaPath);
+                bool notExistsFolders = false;
+                if (!Directory.Exists(localOtovarkaPath))
+                {
+                    MyLogger.Log.Error($"Local In Path for {magazineSettings.Name} not exists {localOtovarkaPath}");
+                    notExistsFolders = true;
+                }
+
+                if (!TransferClient.ExistsFile(remoteOtovarkaPath))
+                {
+                    MyLogger.Log.Error($"Remote Out Path for {magazineSettings.Name} not exists {remoteOtovarkaPath}");
+                    notExistsFolders = true;
+                }
+
+                if (!notExistsFolders)
+                    UploadImportFile(localOtovarkaPath, remoteOtovarkaPath);
             }
 
 
@@ -399,6 +454,37 @@ namespace FileTransferClient
                     File.Delete(LocalImportFile);
                 }
             }
+
+            
+        }
+        private static bool CheckFolders(string magName, string localOutPath, string remoteOutPath, string localInPath, string remoteInPath,  IFileTransferClient TransferClient)
+        {
+            bool notExistsFolders = false;
+            if (!Directory.Exists(localOutPath))
+            {
+                MyLogger.Log.Error($"Local Out Path for {magName} not exists {localOutPath}");
+                notExistsFolders = true;
+            }
+
+            if (!Directory.Exists(localInPath))
+            {
+                MyLogger.Log.Error($"Local In Path for {magName} not exists {localInPath}");
+                notExistsFolders = true;
+            }
+
+            if (!TransferClient.ExistsFile(remoteOutPath))
+            {
+                MyLogger.Log.Error($"Remote Out Path for {magName} not exists {remoteOutPath}");
+                notExistsFolders = true;
+            }
+
+            if (!TransferClient.ExistsFile(remoteInPath))
+            {
+                MyLogger.Log.Error($"Remote In Path for {magName} not exists {remoteInPath}");
+                notExistsFolders = true;
+            }
+
+            return !notExistsFolders;
 
         }
     }
