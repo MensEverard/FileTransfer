@@ -49,7 +49,8 @@ namespace FileTransferClient
             TrayIcon.Text = "File Transfer";
 
             // Load an icon resource for the tray
-            TrayIcon.Icon = TrayIcon.Icon = SystemIcons.Asterisk; // new System.Drawing.Icon("icon.ico");
+            TrayIcon.Icon = Properties.Resources.iconfinder_servertransfer_4417112_116623;
+
 
             TrayMenu = new ContextMenuStrip();
 
