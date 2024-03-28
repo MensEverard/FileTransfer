@@ -1,6 +1,6 @@
-**Структура конфигурационных файлов**  
+п»ї**РЎС‚СЂСѓРєС‚СѓСЂР° РєРѕРЅС„РёРіСѓСЂР°С†РёРѕРЅРЅС‹С… С„Р°Р№Р»РѕРІ**  
 ```json
-FTPSettings.json - настройки подключения к FTP
+FTPSettings.json - РЅР°СЃС‚СЂРѕР№РєРё РїРѕРґРєР»СЋС‡РµРЅРёСЏ Рє FTP
 {  
     "Server": "127.0.0.1",  
     "Username": "FTPusername",  
@@ -8,7 +8,7 @@ FTPSettings.json - настройки подключения к FTP
     "rootPath": "/mag_obmen"  
 }  
 
-YDSettings.json - настройки подключения к Yndex API  
+YDSettings.json - РЅР°СЃС‚СЂРѕР№РєРё РїРѕРґРєР»СЋС‡РµРЅРёСЏ Рє Yndex API  
 {  
     "AccessToken": "you access token",  
     "rootPath": "/mag_obmen"  
@@ -16,10 +16,10 @@ YDSettings.json - настройки подключения к Yndex API
 
 ProgramSettings.json  
 {  
-    "TransferSide": "Mag",  (Mag - Работа на стороне магазина  
-                            Server - Работа на стороне сервера)  
+    "TransferSide": "Mag",  (Mag - Р Р°Р±РѕС‚Р° РЅР° СЃС‚РѕСЂРѕРЅРµ РјР°РіР°Р·РёРЅР°  
+                            Server - Р Р°Р±РѕС‚Р° РЅР° СЃС‚РѕСЂРѕРЅРµ СЃРµСЂРІРµСЂР°)  
     "RootPath": "D:\\VSProjects\\mag_obmen\\mag_folders",  
-    "ScanInterval": 10, (Переодичность проверки каталогов)  
+    "ScanInterval": 10, (РџРµСЂРµРѕРґРёС‡РЅРѕСЃС‚СЊ РїСЂРѕРІРµСЂРєРё РєР°С‚Р°Р»РѕРіРѕРІ)  
 }  
 
 MagSettings.json      
