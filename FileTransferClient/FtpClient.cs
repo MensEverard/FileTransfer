@@ -37,23 +37,56 @@ namespace FileTransferClient
             }
         }
 
+
+        public bool ExistsFile(string remotePath)
+        {
+            bool fileExists;
+            try
+            {
+                FtpWebRequest request = (FtpWebRequest)WebRequest.Create($"ftp://{this.Settings.Server}{this.Settings.rootPath}{remotePath}");
+                request.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
+                request.Method = WebRequestMethods.Ftp.GetDateTimestamp;
+
+                using (FtpWebResponse response = (FtpWebResponse)request.GetResponse())
+                {
+                    fileExists = true;
+                }
+            }
+            catch (WebException ex)
+            {
+                FtpWebResponse response = (FtpWebResponse)ex.Response;
+                if (response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailable)
+                {
+                    fileExists = false;
+                }
+                else
+                {
+                    throw;
+                }
+            }
+
+            return fileExists;
+        }
+
+
         public void DownloadFiles(string remotePath, string localPath)
         {
             // Download files from the FTP server
             using (WebClient client = new WebClient())
             {
                 client.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
+
                 try
                 {
                     client.DownloadFile($"ftp://{this.Settings.Server}{this.Settings.rootPath}{remotePath}", localPath);
                 }
                 catch (WebException ex)
                 {
-                   // MyLogger.Log.Error($"DownloadFile File {this.Settings.rootPath}{remotePath} not found");
+                    // MyLogger.Log.Error($"DownloadFile File {this.Settings.rootPath}{remotePath} not found");
 
                     if (ex.Response != null)
                     {
-                        var response = (FtpWebResponse)ex.Response;
+                        FtpWebResponse response = (FtpWebResponse)ex.Response;
                         if (response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailable)
                         {
                             // do nothing
@@ -67,12 +100,40 @@ namespace FileTransferClient
         }
 
 
+
+
         public void DeleteFile(string remotePath)
         {
             FtpWebRequest request = (FtpWebRequest)WebRequest.Create($"ftp://{this.Settings.Server}{this.Settings.rootPath}{remotePath}");
             request.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
             request.Method = WebRequestMethods.Ftp.DeleteFile;
             FtpWebResponse response = (FtpWebResponse)request.GetResponse();
+            response.Close();
+        }
+
+
+        public void RenameFile(string sourceRemoteFilePath, string newRemoteFilePath)
+        {
+            // Create an FTP request
+            FtpWebRequest request = (FtpWebRequest)WebRequest.Create($"ftp://{this.Settings.Server}{this.Settings.rootPath}{sourceRemoteFilePath}");
+            request.Method = WebRequestMethods.Ftp.Rename;
+            request.RenameTo = $"{this.Settings.rootPath}{newRemoteFilePath}";
+            request.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
+
+            // Send the request and get the response
+            FtpWebResponse response = (FtpWebResponse)request.GetResponse();
+
+            // Check the response status
+            if (response.StatusCode == FtpStatusCode.CommandOK)
+            {
+                Console.WriteLine("File renamed successfully.");
+            }
+            else
+            {
+                Console.WriteLine("Failed to rename file. Status: " + response.StatusDescription);
+            }
+
+            // Close the response
             response.Close();
         }
 
@@ -109,6 +170,8 @@ namespace FileTransferClient
 
         public bool CompareFiles(string remotePath, string localPath)
         {
+            if (!File.Exists(localPath)) { return false; }
+
             byte[] localFileBytes = File.ReadAllBytes(localPath);
             byte[] ftpFileBytes = this.DownloadData(remotePath);
 
