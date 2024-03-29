@@ -40,16 +40,40 @@ namespace FileTransferClient
 
         public bool ExistsFile(string remotePath)
         {
-            bool fileExists;
+            //try
+            //{
+            //    FtpWebRequest request = (FtpWebRequest)WebRequest.Create($"ftp://{this.Settings.Server}{this.Settings.rootPath}{remotePath}");
+            //    request.Method = WebRequestMethods.Ftp.GetFileSize;
+            //    request.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
+
+            //    using (FtpWebResponse response = (FtpWebResponse)request.GetResponse())
+            //    {
+            //        return response.ContentLength > 0;
+            //    }
+            //}
+            //catch (WebException ex)
+            //{
+            //    FtpWebResponse response = (FtpWebResponse)ex.Response;
+            //    if (response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailable)
+            //    {
+            //        return false;
+            //    }
+            //    else
+            //    {
+            //        throw;
+            //    }
+            //}
+
+            
             try
             {
                 FtpWebRequest request = (FtpWebRequest)WebRequest.Create($"ftp://{this.Settings.Server}{this.Settings.rootPath}{remotePath}");
                 request.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
-                request.Method = WebRequestMethods.Ftp.GetDateTimestamp;
+                request.Method = WebRequestMethods.Ftp.ListDirectory;
 
                 using (FtpWebResponse response = (FtpWebResponse)request.GetResponse())
                 {
-                    fileExists = true;
+                    return true;
                 }
             }
             catch (WebException ex)
@@ -57,15 +81,14 @@ namespace FileTransferClient
                 FtpWebResponse response = (FtpWebResponse)ex.Response;
                 if (response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailable)
                 {
-                    fileExists = false;
+                    MyLogger.Log.Error(((FtpWebResponse)ex.Response).StatusDescription);
+                    return false;
                 }
                 else
                 {
                     throw;
                 }
             }
-
-            return fileExists;
         }
 
 
