@@ -17,6 +17,7 @@ namespace FileTransferClient
         public string InFolderName { get; set; }
         public string OutFolderName { get; set; }
         public bool Otovarka { get; set; }
+        public string OtovarkaFolderName { get; set; }
         public string Transport { get; set; }
     }
 
@@ -38,7 +39,8 @@ namespace FileTransferClient
 
         //private Timer timer = new Timer();
         private static System.Threading.Timer _timer;
-
+        
+        string MyVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString();
 
         public Program()
         {
@@ -46,6 +48,7 @@ namespace FileTransferClient
             // Create a simple form without a visible window
             this.WindowState = FormWindowState.Minimized;
             this.ShowInTaskbar = false;
+            
 
 
             // Initialize the system tray icon
@@ -83,6 +86,7 @@ namespace FileTransferClient
 
         private void ShowLogMenuItem_Click(object sender, EventArgs e)
         {
+            
             MyLogger.logWindow.Show($"{TrayIcon.Text} Logs");
             //MyLogger.logWindow.SetTitle();
         }
@@ -214,15 +218,15 @@ namespace FileTransferClient
             else
             {
                 MagazineSettingsList = new List<MagazineSettings>{
-                    new MagazineSettings { Name = "Asino", KkmNumber = 1, Otovarka = true, InFolderName = "In", OutFolderName = "Out", Transport = "ftp" }
-                    , new MagazineSettings {Name = "Bakchar", KkmNumber = 2, Otovarka = false,InFolderName = "In1", OutFolderName = "Out1", Transport = "ftp" }
+                    new MagazineSettings { Name = "Asino", KkmNumber = 1, Otovarka = true, OtovarkaFolderName = "Otovarka", InFolderName = "In", OutFolderName = "Out", Transport = "ftp" }
+                    , new MagazineSettings {Name = "Bakchar", KkmNumber = 2, Otovarka = false, OtovarkaFolderName = "Otovarka1", InFolderName = "In1", OutFolderName = "Out1", Transport = "ftp" }
                 };
 
                 SaveMagSettingsToJSON(MagazineSettingsList, "MagSettings.json");
                 throw new FileNotFoundException("MagSettings.json not found");
             }
 
-            TrayIcon.Text = TrayIcon.Text + " " + programSettings.TransferSide;
+            TrayIcon.Text = MyVersion + " " + TrayIcon.Text + " " + programSettings.TransferSide;
 
             //create timer for run StartTransfer
 
@@ -336,8 +340,8 @@ namespace FileTransferClient
             if (magazineSettings.Otovarka)
             {
 
-                string localOtovarkaPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, "Otovarka");
-                string remoteOtovarkaPath = Path.Combine("/", magazineSettings.Name, "Otovarka").Replace("\\", "/");
+                string localOtovarkaPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, magazineSettings.OtovarkaFolderName);
+                string remoteOtovarkaPath = Path.Combine("/", magazineSettings.Name, magazineSettings.OtovarkaFolderName).Replace("\\", "/");
 
                 MyLogger.Log.Debug("Check Otovarka Folders");
                 bool notExistsFolders = false;
@@ -356,6 +360,18 @@ namespace FileTransferClient
 
                 if (!notExistsFolders)
                 {
+                    MyLogger.Log.Debug("Check Otovarka Files");
+                    if (!File.Exists(localOtovarkaPath + "\\in.flg") && File.Exists(localOtovarkaPath + "\\import.txt"))
+                    {
+                        MyLogger.Log.Debug("Check Otovarka import.txt for @");
+                        string secondLine = File.ReadLines(localOtovarkaPath + "\\import.txt").ElementAtOrDefault(1);
+                        if (secondLine != null && secondLine.Contains("@"))
+                        {
+                            MyLogger.Log.Debug("Upload Otovarka import@.txt");
+                            UploadImportAFile(localOtovarkaPath, remoteOtovarkaPath);
+                        }
+                    }
+
                     MyLogger.Log.Debug("Download Otovarka Files");
                     DownloadImportFile(remoteOtovarkaPath, localOtovarkaPath);
                 }
@@ -500,8 +516,8 @@ namespace FileTransferClient
             if (magazineSettings.Otovarka)
             {
 
-                string localOtovarkaPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, "Otovarka");
-                string remoteOtovarkaPath = Path.Combine("/", magazineSettings.Name, "Otovarka").Replace("\\", "/");
+                string localOtovarkaPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, magazineSettings.OtovarkaFolderName);
+                string remoteOtovarkaPath = Path.Combine("/", magazineSettings.Name, magazineSettings.OtovarkaFolderName).Replace("\\", "/");
 
                 MyLogger.Log.Debug("Check Otovarka Folders");
                 bool notExistsFolders = false;
@@ -522,6 +538,20 @@ namespace FileTransferClient
                 {
                     MyLogger.Log.Debug("Upload Otovarka Files");
                     UploadImportFile(localOtovarkaPath, remoteOtovarkaPath, false);
+                }
+
+
+                MyLogger.Log.Debug($"Download Otovarka Files {importAName}");
+                TransferClient.DownloadFiles(remoteOtovarkaPath + $"/{importAName}", localOtovarkaPath + $"\\{importATempName}");
+
+                if (File.Exists(localOtovarkaPath + $"\\{importATempName}"))
+                {
+                    if (File.Exists(localOtovarkaPath + $"\\{importAName}"))
+                        File.Delete(localOtovarkaPath + $"\\{importAName}");
+
+                    File.Move(localOtovarkaPath + $"\\{importATempName}", localOtovarkaPath + $"\\{importAName}");
+
+                    TransferClient.DeleteFile(remoteOtovarkaPath + $"/{importAName}");
                 }
             }
 
