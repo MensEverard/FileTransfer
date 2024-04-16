@@ -29,7 +29,8 @@ MagSettings.json
         "KkmNumber": 1,  
         "InFolderName": "In",  
         "OutFolderName": "Out",  
-        "Otovarka": true,  
+        "Otovarka": true,
+        "OtovarkaFolderName": "Otovarka",  
         "Transport": "yd"  
     },  
     {  
@@ -37,7 +38,8 @@ MagSettings.json
         "KkmNumber": 2,  
         "InFolderName": "In1",  
         "OutFolderName": "Out1",  
-        "Otovarka": false,  
+        "Otovarka": false,
+        "OtovarkaFolderName": "Otovarka",
         "Transport": "ftp"  
     }  
 ]  
