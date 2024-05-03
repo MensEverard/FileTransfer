@@ -3,6 +3,7 @@ using System;
 using System.IO;
 using System.Net;
 using System.Runtime;
+using System.Threading;
 
 namespace FileTransferClient
 {
@@ -54,14 +55,20 @@ namespace FileTransferClient
             catch (WebException ex)
             {
                 FtpWebResponse response = (FtpWebResponse)ex.Response;
-                if (response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailable || response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailableOrBusy)
+                if (response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailable || response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailableOrBusy )
                 {
                     return false;
+                }
+                else if (response.StatusCode == FtpStatusCode.EnteringPassive)
+                {
+                    MyLogger.Log.Info($"({((FtpWebResponse)ex.Response).StatusDescription} - retrying in 1 second...");
+                    Thread.Sleep(1000); // Wait for 1 second
+                    return ExistsFile(remotePath);
                 }
                 else
                 {
                     MyLogger.Log.Error(((FtpWebResponse)ex.Response).StatusDescription);
-                    throw;
+                    return false;
                 }
             }
         }
@@ -70,34 +77,35 @@ namespace FileTransferClient
         public void DownloadFiles(string remotePath, string localPath)
         {
             // Download files from the FTP server
-            using (WebClient client = new WebClient())
+            try
             {
-                client.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
-
-                try
+                using (WebClient client = new WebClient())
                 {
+                    client.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
                     client.DownloadFile($"ftp://{this.Settings.Server}{this.Settings.rootPath}{remotePath}", localPath);
                 }
-                catch (WebException ex)
+            }
+            catch (WebException ex)
+            {
+                FtpWebResponse response = (FtpWebResponse)ex.Response;
+                if (response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailable || response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailableOrBusy)
                 {
-                    // MyLogger.Log.Error($"DownloadFile File {this.Settings.rootPath}{remotePath} not found");
-
-                    if (ex.Response != null)
-                    {
-                        FtpWebResponse response = (FtpWebResponse)ex.Response;
-                        if (response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailable)
-                        {
-                            // do nothing
-                            return;
-                        }
-                    }
-                    MyLogger.Log.Error(ex.Message + " " + ex.InnerException.Message);
-                    throw; // Re-throw the exception if it's not related to file availability
+                    return;
                 }
+                else if (response.StatusCode == FtpStatusCode.EnteringPassive)
+                {
+                    MyLogger.Log.Info($"({((FtpWebResponse)ex.Response).StatusDescription} - retrying in 1 second...");
+                    Thread.Sleep(1000); // Wait for 1 second
+                    this.DownloadFiles(remotePath, localPath);
+                }
+                else
+                {
+                    MyLogger.Log.Error(((FtpWebResponse)ex.Response).StatusDescription);
+                    throw;
+                }
+
             }
         }
-
-
 
 
         public void DeleteFile(string remotePath)
@@ -142,26 +150,31 @@ namespace FileTransferClient
             {
                 return;
             }
-
-            using (var client = new WebClient())
+            try
             {
-                client.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
-                try
+                using (WebClient client = new WebClient())
                 {
+                    client.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
                     client.UploadFile($"ftp://{this.Settings.Server}{this.Settings.rootPath}{remotePath}", WebRequestMethods.Ftp.UploadFile, localPath);
                 }
-                catch (WebException ex)
+            }
+            catch (WebException ex)
+            {
+                FtpWebResponse response = (FtpWebResponse)ex.Response;
+                if (response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailable || response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailableOrBusy)
                 {
-                    if (ex.Response != null)
-                    {
-                        var response = (FtpWebResponse)ex.Response;
-                        if (response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailable)
-                        {
-                            return;
-                        }
-                    }
-                    // Handle other WebException scenarios if needed
-                    throw; // Re-throw the exception if it's not related to file availability
+                    return;
+                }
+                else if (response.StatusCode == FtpStatusCode.EnteringPassive || response.StatusCode == FtpStatusCode.OpeningData)
+                {
+                    MyLogger.Log.Info($"({((FtpWebResponse)ex.Response).StatusDescription} - retrying in 1 second...");
+                    Thread.Sleep(1000); // Wait for 1 second
+                    UploadFiles(localPath, remotePath);
+                }
+                else
+                {
+                    MyLogger.Log.Error(((FtpWebResponse)ex.Response).StatusDescription);
+                    throw;
                 }
             }
         }
@@ -182,26 +195,38 @@ namespace FileTransferClient
 
         byte[] DownloadData(string remotePath)
         {
-            using (WebClient client = new WebClient())
+            try
             {
-                client.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
-                try
+                using (WebClient client = new WebClient())
                 {
+                    client.Credentials = new NetworkCredential(this.Settings.Username, this.Settings.Password);
                     return client.DownloadData($"ftp://{this.Settings.Server}{this.Settings.rootPath}/{remotePath}");
                 }
-                catch (WebException ex)
+            }
+            catch (WebException ex)
+            {
+                if (ex.Response != null)
                 {
-                    if (ex.Response != null)
+                    FtpWebResponse response = (FtpWebResponse)ex.Response;
+                    if (response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailable || response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailableOrBusy)
                     {
-                        var response = (FtpWebResponse)ex.Response;
-                        if (response.StatusCode == FtpStatusCode.ActionNotTakenFileUnavailable)
-                        {
-                            return new byte[0];
-                        }
+                        return new byte[0];
                     }
-                    // Handle other WebException scenarios if needed
-                    throw; // Re-throw the exception if it's not related to file availability
+                    else if (response.StatusCode == FtpStatusCode.EnteringPassive)
+                    {
+                        MyLogger.Log.Info($"({((FtpWebResponse)ex.Response).StatusDescription} - retrying in 1 second...");
+                        Thread.Sleep(1000); // Wait for 1 second
+                        return DownloadData(remotePath);
+                    }
+                    else
+                    {
+                        MyLogger.Log.Error(((FtpWebResponse)ex.Response).StatusDescription);
+                        return new byte[0];
+                    }
                 }
+                MyLogger.Log.Error(((FtpWebResponse)ex.Response).StatusDescription);
+                return new byte[0];
+
             }
         }
 
