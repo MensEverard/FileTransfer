@@ -39,7 +39,7 @@ namespace FileTransferClient
 
         //private Timer timer = new Timer();
         private static System.Threading.Timer _timer;
-        
+
         string MyVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString();
 
         public Program()
@@ -48,7 +48,7 @@ namespace FileTransferClient
             // Create a simple form without a visible window
             this.WindowState = FormWindowState.Minimized;
             this.ShowInTaskbar = false;
-            
+
 
 
             // Initialize the system tray icon
@@ -86,7 +86,7 @@ namespace FileTransferClient
 
         private void ShowLogMenuItem_Click(object sender, EventArgs e)
         {
-            
+
             MyLogger.logWindow.Show($"{TrayIcon.Text} Logs");
             //MyLogger.logWindow.SetTitle();
         }
@@ -394,15 +394,21 @@ namespace FileTransferClient
 
                         TransferClient.DownloadFiles(RemoteImportFile, LocalImportTempFile);
 
-                        if (File.Exists(LocalImportTempFile))
-                            File.Move(LocalImportTempFile, LocalImportFile);
+                        if (File.Exists(LocalImportTempFile) && TransferClient.CompareFiles(RemoteImportFile, LocalImportTempFile))
+                        {
+                            try
+                            {
+                                File.Move(LocalImportTempFile, LocalImportFile);
+                                TransferClient.DeleteFile(RemoteImportFile);
 
-                        TransferClient.DownloadFiles(RemoteInFile, LocalInFile);
-
-
-                        TransferClient.DeleteFile(RemoteImportFile);
-
-                        TransferClient.DeleteFile(RemoteInFile);
+                                TransferClient.DownloadFiles(RemoteInFile, LocalInFile);
+                                TransferClient.DeleteFile(RemoteInFile);
+                            }
+                            catch (IOException ex)
+                            {
+                                MyLogger.Log.Debug("DownloadImportFile: " + ex.Message);
+                            }
+                        }
 
                     }
                 }
@@ -415,30 +421,46 @@ namespace FileTransferClient
                 string RemoteExportFile = Path.Combine(remotePath, "export.txt").Replace("\\", "/");
                 string RemoteExportTempFile = Path.Combine(remotePath, "export.tmp").Replace("\\", "/");
 
-                if (File.Exists(LocalExportFile))
+                try
                 {
-
-                    TransferClient.UploadFiles(LocalExportFile, RemoteExportTempFile);
-
-                    TransferClient.RenameFile(RemoteExportTempFile, RemoteExportFile);
-
-                    File.Delete(LocalExportFile);
+                    if (File.Exists(LocalExportFile))
+                    {
+                        TransferClient.UploadFiles(LocalExportFile, RemoteExportTempFile);
+                        if (TransferClient.CompareFiles(RemoteExportTempFile, LocalExportFile))
+                        {
+                            TransferClient.RenameFile(RemoteExportTempFile, RemoteExportFile);
+                            File.Delete(LocalExportFile);
+                        }
+                    }
+                }
+                catch (IOException ex)
+                {
+                    MyLogger.Log.Debug("UploadExportFile: " + ex.Message);
                 }
             }
 
             void UploadImportAFile(string localPath = null, string remotePath = null)
             {
                 string LocalImportFile = Path.Combine(localPath, "import.txt");
-
                 string RemoteImportFile = Path.Combine(remotePath, "import@.txt").Replace("\\", "/");
                 string RemoteImportTempFile = Path.Combine(remotePath, "import@.tmp").Replace("\\", "/");
 
-                TransferClient.UploadFiles(LocalImportFile, RemoteImportTempFile);
-
-                TransferClient.RenameFile(RemoteImportTempFile, RemoteImportFile);
-
-
-                File.Delete(LocalImportFile);
+                try
+                {
+                    if (File.Exists(LocalImportFile))
+                    {
+                        TransferClient.UploadFiles(LocalImportFile, RemoteImportTempFile);
+                        if (TransferClient.CompareFiles(RemoteImportTempFile, LocalImportFile))
+                        {
+                            TransferClient.RenameFile(RemoteImportTempFile, RemoteImportFile);
+                            File.Delete(LocalImportFile);
+                        }
+                    }
+                }
+                catch (IOException ex)
+                {
+                    MyLogger.Log.Debug("UploadImportAFile: " + ex.Message);
+                }
 
             }
         }
@@ -451,7 +473,7 @@ namespace FileTransferClient
             string remoteInPath = Path.Combine("/", magazineSettings.Name, magazineSettings.InFolderName).Replace("\\", "/");
             string localOutPath = Path.Combine(programSettings.RootPath, magazineSettings.Name, magazineSettings.OutFolderName);
             string remoteOutPath = Path.Combine("/", magazineSettings.Name, magazineSettings.OutFolderName).Replace("\\", "/");
-            
+
 
             MyLogger.Log.Debug("Check Folders");
             if (!CheckFolders(magazineSettings.Name, localOutPath, remoteOutPath, localInPath, remoteInPath, TransferClient))
